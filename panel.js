@@ -1,4 +1,5 @@
 import { asPrompt, readContext } from './context.mjs';
+import { dashboard, normalizeRemoteLink, openRemote, remoteLinkKey } from './remote.mjs';
 
 const byId = id => document.getElementById(id);
 const thread = byId('thread');
@@ -7,19 +8,21 @@ const status = byId('status');
 const list = byId('session-list');
 const connect = byId('connect');
 const sessions = new Map();
-const destination = 'https://antigravity.google.com/';
+const localSetup = byId('local-setup');
 const sourceWindow = chrome.windows.getCurrent().then(window => window.id);
 let port, session, connecting = false, starting = false, capturing = false;
 let pending, sequence = 0;
 let draft = { text: '', attachment: null };
 
 function refresh() {
+  byId('welcome').hidden = Boolean(session);
+  thread.hidden = byId('composer').hidden = !session;
   byId('send').disabled = !port || connecting || starting || capturing || !session || session.closed || Boolean(pending) || !prompt.value.trim();
   byId('stop').hidden = !pending;
   byId('stop').disabled = Boolean(pending?.stopping);
   connect.hidden = Boolean(port && !connecting && !starting && session);
   connect.disabled = connecting || starting;
-  connect.textContent = connecting || starting ? '接続中…' : port ? '新しい会話を開始' : 'Antigravity に接続';
+  connect.textContent = connecting || starting ? '接続中…' : port ? '新しい会話を開始' : 'サイドバーで新しい会話';
   byId('sessions').setAttribute('aria-expanded', String(!list.hidden));
 
   const attachment = draft.attachment;
@@ -114,6 +117,7 @@ function onNative(message) {
       draft: session ? { text: '', attachment: null } : draft };
     sessions.set(next.id, next);
     selectSession(next);
+    localSetup.hidden = true;
     status.textContent = '';
   } else if (message.type === 'chunk' && pending?.session.id === message.sessionId) {
     const item = pending.reply;
@@ -136,7 +140,7 @@ function onNative(message) {
   } else if (message.type === 'error') {
     connecting = starting = false;
     if (pending?.token === message.token) pending = undefined;
-    status.textContent = /auth|login|sign.in/i.test(message.message)
+    status.textContent = message.code === -32000 || /auth|login|sign.in/i.test(message.message)
       ? 'Antigravity CLI で agy acp --login を実行してから再接続してください。'
       : message.message;
   }
@@ -145,6 +149,7 @@ function onNative(message) {
 }
 
 connect.addEventListener('click', () => {
+  localSetup.hidden = true;
   if (port) return startSession();
   connecting = true;
   status.textContent = 'ローカルの Antigravity CLI に接続中…';
@@ -156,9 +161,13 @@ connect.addEventListener('click', () => {
     port = undefined;
     connecting = starting = false;
     pending = undefined;
-    status.textContent = failure
-      ? '接続できません。README の手順でローカル接続を登録してください。'
-      : 'ローカルの接続が終了しました。再接続すると新しい会話が始まります。';
+    const missingHost = /native messaging host not found/i.test(failure ?? '');
+    localSetup.hidden = !failure;
+    status.textContent = missingHost
+      ? 'ローカル中継が登録されていません。接続手順を開いて登録してください。'
+      : failure
+        ? 'ローカル中継に接続できませんでした。Chrome と拡張 ID の登録先を確認してください。'
+        : 'ローカルの接続が終了しました。再接続すると新しい会話が始まります。';
     if (!list.hidden) showSessions();
     refresh();
   });
@@ -256,21 +265,93 @@ byId('inspect').addEventListener('click', () => {
 });
 byId('remove').addEventListener('click', () => { draft.attachment = null; refresh(); });
 
+const remoteInput = byId('remote-link');
+const remoteError = byId('remote-error');
+const remoteStatus = byId('remote-status');
+let savedRemote = null;
+let savingRemote = false;
+
+function refreshRemote() {
+  byId('remote-target').hidden = !savedRemote;
+  byId('remote-target').textContent = savedRemote?.includes('?p=')
+    ? '保存済みの会話を開きます。' : '保存済みの端末を開きます。';
+  byId('choose-remote').hidden = !savedRemote;
+  byId('clear-remote').hidden = !savedRemote;
+  byId('save-remote').disabled = savingRemote;
+  byId('clear-remote').disabled = savingRemote;
+  remoteInput.disabled = savingRemote;
+}
+
+const remoteReady = chrome.storage.local.get(remoteLinkKey).then(values => {
+  savedRemote = normalizeRemoteLink(values[remoteLinkKey]);
+  remoteInput.value = savedRemote ?? '';
+}).catch(() => {
+  remoteStatus.textContent = '保存した接続先を読み込めませんでした。';
+}).finally(refreshRemote);
+
+remoteInput.addEventListener('input', () => {
+  remoteInput.removeAttribute('aria-invalid');
+  remoteError.textContent = '';
+});
+
+async function saveRemote(value) {
+  if (savingRemote) return;
+  savingRemote = true;
+  refreshRemote();
+  remoteError.textContent = '';
+  remoteStatus.textContent = '';
+  try {
+    await remoteReady;
+    if (value) await chrome.storage.local.set({ [remoteLinkKey]: value });
+    else await chrome.storage.local.remove(remoteLinkKey);
+    savedRemote = value;
+    remoteInput.value = value ?? '';
+    remoteInput.removeAttribute('aria-invalid');
+    byId('remote-settings').open = false;
+    byId('remote-settings').querySelector('summary').focus();
+    remoteStatus.textContent = value ? '接続先を保存しました。' : '保存を解除しました。';
+  } catch {
+    remoteError.textContent = '接続先を保存できませんでした。もう一度お試しください。';
+  } finally {
+    savingRemote = false;
+    refreshRemote();
+  }
+}
+
+byId('remote-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const value = normalizeRemoteLink(remoteInput.value);
+  if (!value) {
+    remoteInput.setAttribute('aria-invalid', 'true');
+    remoteError.textContent = '公式 Remote Control の端末または会話の URL を入力してください。';
+    remoteInput.focus();
+    return;
+  }
+  void saveRemote(value);
+});
+byId('clear-remote').addEventListener('click', () => saveRemote(null));
+
+let openingRemote = false;
+async function launchRemote(mode, chooseAgain = false) {
+  if (openingRemote) return;
+  openingRemote = true;
+  byId('options').open = false;
+  try {
+    await remoteReady;
+    const url = chooseAgain ? dashboard : savedRemote ?? dashboard;
+    await openRemote(chrome, url, mode, await sourceWindow);
+  } catch {
+    const feedback = session ? status : remoteStatus;
+    feedback.textContent = '公式 Remote Control を開けませんでした。もう一度お試しください。';
+  } finally {
+    openingRemote = false;
+  }
+}
+
+byId('desktop').addEventListener('click', () => launchRemote('split'));
+byId('dashboard').addEventListener('click', () => launchRemote('split', true));
+byId('choose-remote').addEventListener('click', () => launchRemote('split', true));
 for (const mode of ['split', 'tab', 'window']) {
-  byId(mode).addEventListener('click', async () => {
-    byId('options').open = false;
-    try {
-      const tab = await activeTab();
-      if (mode === 'split' && tab?.splitViewId === -1) {
-        const opened = await chrome.tabs.create({ url: destination, windowId: tab.windowId,
-          splitWithTabId: tab.id, pinned: tab.pinned }).catch(() => null);
-        if (opened) return;
-      }
-      if (mode === 'tab') await chrome.tabs.create({ url: destination, windowId: await sourceWindow });
-      else await chrome.windows.create({ url: destination, type: 'popup', width: 480 });
-    } catch {
-      status.textContent = '公式画面を開けませんでした。';
-    }
-  });
+  byId(mode).addEventListener('click', () => launchRemote(mode));
 }
 refresh();

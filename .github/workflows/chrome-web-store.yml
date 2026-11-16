@@ -22,7 +22,7 @@ jobs:
           node --check panel.js
           node --check context.mjs
           node --check background.mjs
-          node --test tests/native-host.test.mjs
+          node --test tests/*.test.mjs
           node --check scripts/publish-store.mjs
           python3 scripts/package.py
           unzip -t dist/*.zip

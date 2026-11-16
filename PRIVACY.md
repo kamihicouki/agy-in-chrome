@@ -4,4 +4,6 @@
 
 取得した内容は送信するまでサイドパネルのメモリに保持します。「送信」を押すと、メッセージと添付した資料をこの端末の中継から Antigravity CLI に渡します。その後の送信や保存には CLI の設定と [Google のプライバシーポリシー](https://policies.google.com/privacy) が適用されます。拡張は Google の認証情報を読み取りません。独自の分析や広告のための通信は行いません。
 
+保存を選んだ場合は、公式 Remote Control の端末・会話リンクをこの Chrome に保存します。「保存を解除」で消せます。リンクは Chrome Sync に送られません。
+
 お問い合わせは [GitHub Issues](https://github.com/kamihicouki/agy-in-chrome/issues) へお願いします。

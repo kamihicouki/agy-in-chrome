@@ -26,8 +26,8 @@ function request(method, params, token, sessionId) {
   write({ id, method, params });
 }
 
-function fail(message, token) {
-  send({ type: 'error', message, token });
+function fail(message, token, code) {
+  send({ type: 'error', message, token, code });
 }
 
 function close(message) {
@@ -68,7 +68,7 @@ function onAgentLine(line) {
   const { method, token, sessionId } = entry;
   if (method === 'session/prompt') active = null;
   if (packet.error) {
-    fail(String(packet.error.message ?? 'ACP request failed').slice(0, 500), token);
+    fail(String(packet.error.message ?? 'ACP request failed').slice(0, 500), token, packet.error.code);
     return;
   }
   if (method === 'initialize') {
@@ -95,7 +95,7 @@ function onChrome({ type, token, sessionId, text }) {
     createInterface({ input: agent.stdout }).on('line', onAgentLine);
     request('initialize', {
       protocolVersion: 1, clientCapabilities: {},
-      clientInfo: { name: 'agy-in-chrome', version: '0.4.0' },
+      clientInfo: { name: 'agy-in-chrome', version: '0.4.1' },
     }, token);
   } else if (!ready) {
     fail('Antigravity CLI に接続してください。', token);

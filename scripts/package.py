@@ -15,7 +15,7 @@ if (
 ):
     raise SystemExit("manifest.json must have a valid three-part Chrome version")
 
-files = ["manifest.json", "background.mjs", "panel.html", "panel.css", "panel.js", "context.mjs"]
+files = ["manifest.json", "background.mjs", "panel.html", "panel.css", "panel.js", "context.mjs", "remote.mjs"]
 files += [f"icons/{size}.png" for size in (16, 32, 48, 128)]
 dist = ROOT / "dist"
 dist.mkdir(exist_ok=True)

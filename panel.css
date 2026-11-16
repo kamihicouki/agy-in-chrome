@@ -48,3 +48,20 @@ textarea { resize: none; field-sizing: content; max-height: 120px; min-height: 3
 #attachment button { background: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #attachment-preview { border: 1px solid var(--line); border-radius: 8px; max-height: 25vh; overflow: auto; margin: 0 0 6px; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 system-ui, sans-serif; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#welcome { grid-row: 3; overflow: auto; align-self: start; padding: 20px 16px 12px; }
+#welcome h2 { margin: 0; font-size: 17px; }
+#welcome p { color: var(--quiet); margin: 7px 0 12px; }
+.primary { background: var(--action); color: var(--on-action); min-height: 38px; }
+#remote-settings { margin-top: 13px; }
+#remote-settings summary { display: list-item; list-style: revert; padding: 6px 0; min-height: 34px; }
+#remote-form { display: grid; gap: 6px; }
+#remote-form p { margin: 0; font-size: 12px; }
+#remote-form p:empty, #remote-status:empty, #status:empty { display: none; }
+#remote-link { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); color: var(--text); font: inherit; }
+#remote-link:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+#remote-link[aria-invalid="true"] { border-color: currentColor; }
+.remote-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.quiet-button { background: transparent; color: var(--action); padding-inline: 0; }
+#local-setup { color: var(--action); margin-left: 6px; font-size: 12px; }
+
+.welcome-note { font-size: 12px; }
