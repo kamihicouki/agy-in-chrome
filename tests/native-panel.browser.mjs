@@ -22,12 +22,15 @@ test('Add context in a native cross-origin side panel inserts the active tab con
   const extender = join(directory, 'extension');
   const server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html;charset=utf-8');
-    if (request.url === '/panel') {
+    if (request.url.startsWith('/r/fixture')) {
+      const route = new URL(request.url, 'http://fixture').searchParams.get('p');
+      const id = /^c\/([XY])$/.exec(route)?.[1] ?? 'X';
       response.end(`<style>body{margin:0}iframe{display:block;border:0;width:100%;height:350px}</style>
-        <iframe src="${innerOrigin}/renderer"></iframe>
+        <iframe src="${innerOrigin}/web/fixture/c/${id}"></iframe>
         <script>addEventListener('message',e=>{if(e.data?.draft)document.body.dataset.draft=e.data.draft;});</script>`);
-    } else if (request.url === '/renderer') {
+    } else if (/^\/web\/fixture\/c\/[XY]$/.test(request.url)) {
       response.end(`<style>body{margin:0}textarea{display:block;width:96%;height:80px}</style>
+        <header><button aria-label="Search Conversations">Search</button></header>
         <textarea aria-label="Message input">Original draft</textarea>
         <button aria-label="Add context" onclick="document.querySelector('[role=menu]').hidden=false">Add context</button>
         <div role="menu" hidden><button>Files</button><button>Browser</button></div>
@@ -45,7 +48,7 @@ test('Add context in a native cross-origin side panel inserts the active tab con
   const port = server.address().port;
   const outerOrigin = 'http://127.0.0.1:' + port;
   const innerOrigin = 'http://localhost:' + port;
-  const panelUrl = outerOrigin + '/panel';
+  const panelUrl = outerOrigin + '/r/fixture';
   let browser;
 
   try {
@@ -84,21 +87,21 @@ test('Add context in a native cross-origin side panel inserts the active tab con
     const cdp = await browser.newCDPSession(driver);
     const targets = async () => (await cdp.send('Target.getTargets')).targetInfos;
     const outer = await waitFor(async () => (await targets()).find(target => target.url === panelUrl), 'outer panel');
-    const inner = await waitFor(async () => (await targets()).find(target => target.url === innerOrigin + '/renderer'), 'cross-origin renderer');
+    const inner = await waitFor(async () => (await targets()).find(target => target.url === innerOrigin + '/web/fixture/c/X'), 'cross-origin renderer');
     const outerClient = await connectTarget(cdp, outer.targetId);
     const innerClient = await connectTarget(cdp, inner.targetId);
     const source = await browser.newPage();
     await source.goto('http://127.0.0.1:' + sourceServer.address().port + '/source');
     await source.bringToFront();
 
-    const click = async name => {
-      const point = await waitFor(() => innerClient.eval(`(() => {
-        const button = [...document.querySelectorAll('button')].find(node => node.textContent === ${JSON.stringify(name)});
+    const click = async (name, host = outerClient, renderer = innerClient) => {
+      const point = await waitFor(() => renderer.eval(`(() => {
+        const button = [...document.querySelectorAll('button')].find(node => !node.disabled && (node.getAttribute('aria-label') === ${JSON.stringify(name)} || node.textContent === ${JSON.stringify(name)}));
         const rect = button?.getBoundingClientRect();
         return rect?.width && {x:rect.x + rect.width / 2,y:rect.y + rect.height / 2};
       })()`), name);
       for (const type of ['mousePressed', 'mouseReleased']) {
-        await outerClient.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+        await host.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
       }
     };
     await click('Add context');
@@ -115,6 +118,77 @@ test('Add context in a native cross-origin side panel inserts the active tab con
     }, 'insertion outcome');
     assert.match(result.draft, /^Original draft\n\n[\s\S]*Native fixture source[\s\S]*An article from the active Chrome tab/, result.status);
     assert.equal(result.status, '本文を下書きに挿入しました。');
+
+    const pinLabel = 'このタブに会話を固定';
+    await click(pinLabel);
+    assert.match(await innerClient.eval("document.querySelector('[role=status]').textContent"), /下書きがあるため/);
+    await innerClient.eval("document.querySelector('textarea').value = ''");
+    await click(pinLabel);
+    await waitFor(async () => {
+      const error = await innerClient.eval("document.querySelector('[role=status]')?.textContent").catch(() => null);
+      if (error && !/下書きがあるため/.test(error)) throw new Error(error);
+      return (await targets()).some(target => target.url.includes('#agy-tab-pin='));
+    }, 'pin activated');
+    const pinned = async conversation => {
+      const target = await waitFor(async () => (await targets()).find(item =>
+        item.url.includes('p=c%2F' + conversation + '#agy-tab-pin=')), 'pinned conversation ' + conversation);
+      const host = await connectTarget(cdp, target.targetId);
+      const child = await waitFor(async () => (await targets()).find(item => item.parentId === target.targetId ||
+        (item.url === innerOrigin + '/web/fixture/c/' + conversation && item.targetId !== inner.targetId)), 'pinned renderer');
+      const renderer = await connectTarget(cdp, child.targetId);
+      await waitFor(() => renderer.eval("document.querySelector('[aria-pressed=true].agy-pin-toggle')?.isConnected"), 'pressed pin');
+      return { host, renderer, target };
+    };
+    const pinA = await pinned('X');
+    await pinA.renderer.eval("document.querySelector('textarea').value = 'Draft kept on A'");
+    const tabB = await browser.newPage();
+    await tabB.goto('http://127.0.0.1:' + sourceServer.address().port + '/source');
+    await tabB.evaluate(() => {
+      document.title = 'Source B only';
+      document.querySelector('article').textContent = 'The selected B tab contains a separate article. '.repeat(24);
+    });
+    await tabB.bringToFront();
+    const shared = await waitFor(async () => (await targets()).find(item => item.url === panelUrl), 'shared conversation');
+    const sharedHost = await connectTarget(cdp, shared.targetId);
+    await sharedHost.eval("history.pushState(null, '', '/r/fixture?p=c%2FY'); document.querySelector('iframe').src = " + JSON.stringify(innerOrigin + '/web/fixture/c/Y'));
+    const childY = await waitFor(async () => (await targets()).find(item => item.url === innerOrigin + '/web/fixture/c/Y'), 'shared Y');
+    const sharedY = await connectTarget(cdp, childY.targetId);
+    await sharedY.eval("document.querySelector('textarea').value = ''");
+    await click(pinLabel, sharedHost, sharedY);
+    const pinB = await pinned('Y');
+    await pinB.renderer.eval("document.querySelector('textarea').value = 'Draft kept on B'");
+    await source.bringToFront();
+    assert.equal((await pinned('X')).target.targetId, pinA.target.targetId);
+    assert.equal(await pinA.renderer.eval("document.querySelector('textarea').value"), 'Draft kept on A');
+    await tabB.bringToFront();
+    assert.equal((await pinned('Y')).target.targetId, pinB.target.targetId);
+    assert.equal(await pinB.renderer.eval("document.querySelector('textarea').value"), 'Draft kept on B');
+
+    const addContext = async (panel, expected) => {
+      await waitFor(() => panel.renderer.eval("document.visibilityState === 'visible'"), 'active pane visibility');
+      await click('Add context', panel.host, panel.renderer);
+      await click('現在の Chrome ページを下書きに挿入', panel.host, panel.renderer);
+      const draft = await waitFor(async () => {
+        const value = await panel.renderer.eval("document.querySelector('textarea').value");
+        return value.includes(expected) && value;
+      }, 'draft from the active source');
+      return draft;
+    };
+    assert.doesNotMatch(await addContext(pinB, 'Source B only'), /Native fixture source/);
+    await source.bringToFront();
+    assert.doesNotMatch(await addContext(pinA, 'Native fixture source'), /Source B only/);
+
+    await tabB.bringToFront();
+    await pinB.renderer.eval("document.querySelector('textarea').value = ''");
+    await new Promise(resolve => setTimeout(resolve, 750));
+    await click(pinLabel, pinB.host, pinB.renderer);
+    await waitFor(async () => {
+      const { values, current } = await worker.evaluate(async () => ({
+        values: Object.values(await chrome.storage.session.get()).filter(row => row?.url?.includes('/r/fixture')),
+        current: (await chrome.tabs.query({ active: true }))[0]?.id,
+      }));
+      return Number.isInteger(current) && values.length === 1 && values[0].url.endsWith('X');
+    }, 'B unpinned');
   } finally {
     await browser?.close();
     await Promise.all([server, sourceServer].map(activeServer => new Promise(resolve => activeServer.close(resolve))));

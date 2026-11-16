@@ -14,6 +14,14 @@
       <p id="description"></p>
       <button id="allow" type="button" class="primary" hidden>Chrome で許可</button>
       <p id="status" role="status"></p>
+      <section id="all-sites" hidden aria-labelledby="all-sites-title">
+        <span class="agy-brand-chip">agy in chrome</span>
+        <h2 id="all-sites-title">サイトの読み取りを一括許可</h2>
+        <p id="all-sites-description">任意の設定です。Chrome で全 HTTP・HTTPS サイトへのアクセスを許可すると、サイトごとの許可操作を省けます。ページ本文は、Add Context で添付するか、右クリックから資料を用意するときに読み取ります。</p>
+        <button id="allow-all-sites" type="button" aria-describedby="all-sites-description">全 HTTP・HTTPS サイトを許可</button>
+        <p id="all-sites-status" role="status"></p>
+        <p>Chrome の拡張機能の「サイトへのアクセス」で変更できます。</p>
+      </section>
       <section id="diagnostics" hidden aria-labelledby="diagnostics-title">
         <h2 id="diagnostics-title">公式サイドパネルとの接続状態</h2>
         <ul id="checks"></ul>

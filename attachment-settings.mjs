@@ -6,6 +6,10 @@ const grant = params.get('grant');
 const description = document.getElementById('description');
 const status = document.getElementById('status');
 const button = document.getElementById('allow');
+const allSites = document.getElementById('all-sites');
+const allSitesButton = document.getElementById('allow-all-sites');
+const allSitesStatus = document.getElementById('all-sites-status');
+const allSitePermissions = { origins: ['http://*/*', 'https://*/*'] };
 
 const diagnosticLabels = {
   connected: '通信を確認',
@@ -45,6 +49,45 @@ async function showDiagnostics() {
   ];
   body.replaceChildren(...lines.map(text => Object.assign(document.createElement('li'), { textContent: text })));
   document.getElementById('diagnostics').hidden = false;
+  const officialReady = tabs && outer && renderer && registered.length > 0;
+  description.textContent = officialReady
+    ? '公式 Antigravity へのページ添付は設定済みです。ページ本文を読む範囲は下で選べます。'
+    : 'まず公式 Antigravity に添付項目を追加するための許可を設定します。ページ本文を読む範囲はその後に選べます。';
+  button.hidden = officialReady;
+  allSites.hidden = !officialReady;
+}
+
+async function refreshAllSites() {
+  const granted = await chrome.permissions.contains(allSitePermissions);
+  allSitesButton.hidden = granted;
+  allSitesStatus.textContent = granted
+    ? '一括許可済み。Add Context から閲覧中のページ資料を添付できます。'
+    : '現在はサイトごとの許可、または閲覧中のページで拡張アイコンを押して利用します。';
+}
+
+async function refreshSetup() {
+  await Promise.all([showDiagnostics(), refreshAllSites()]);
+}
+
+function installAllSitePermission() {
+  const refresh = () => refreshSetup().catch(() => {
+    allSitesStatus.textContent = '許可の状態を確認できませんでした。';
+  });
+  chrome.permissions.onAdded.addListener(refresh);
+  chrome.permissions.onRemoved.addListener(refresh);
+  allSitesButton.addEventListener('click', async event => {
+    if (!event.isTrusted) return;
+    allSitesButton.disabled = true;
+    try {
+      const granted = await chrome.permissions.request(allSitePermissions);
+      await refreshAllSites();
+      if (!granted) allSitesStatus.textContent = '一括許可を見送りました。サイトごとに許可して使えます。';
+    } catch {
+      allSitesStatus.textContent = '一括許可を設定できませんでした。サイトごとに許可して使えます。';
+    } finally {
+      allSitesButton.disabled = false;
+    }
+  });
 }
 
 async function configure() {
@@ -58,15 +101,15 @@ async function configure() {
     }
     permissions = { origins: [pending.host] };
     description.textContent = '資料を選んだときだけ、' + pending.host.slice(0, -2) + ' の内容を読み取ります。';
+    button.hidden = false;
   } else {
-    await showDiagnostics();
+    await refreshSetup();
+    installAllSitePermission();
     document.getElementById('check-again').addEventListener('click', () => {
-      showDiagnostics().catch(() => { status.textContent = '接続状態を確認できませんでした。'; });
+      refreshSetup().catch(() => { status.textContent = '接続状態を確認できませんでした。'; });
     });
-    description.textContent = '公式 Antigravity に添付項目を追加し、現在の Chrome タブのタイトルと URL を特定できるようにします。ページ本文はサイトごとに許可します。';
   }
 
-  button.hidden = false;
   button.addEventListener('click', async () => {
     try {
       if (!await chrome.permissions.request(permissions)) {
@@ -78,7 +121,7 @@ async function configure() {
         status.textContent = '許可しました。このタブを閉じて元のページに戻って、公式パネルの Add context から選んでください。';
       } else {
         if (!await registerComposer()) throw new Error('Composer registration was not granted');
-        await showDiagnostics();
+        await refreshSetup();
         status.textContent = '有効になりました。拡張の「接続先・資料プレビュー」を一度開き、公式サイドパネルに戻ると反映されます。';
       }
       button.hidden = true;

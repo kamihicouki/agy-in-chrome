@@ -1,8 +1,10 @@
-import { attachmentObservationPrefix, attachmentSetupMenu, installAttachmentMessaging, registerComposer, stageContext, stageImageMenu, stageMarkdownMenu } from './attachment.mjs';
+import { attachmentObservationPrefix, attachmentSetupMenu, discardStagedContext, installAttachmentMessaging, registerComposer, stageContext, stageImageMenu, stageMarkdownMenu } from './attachment.mjs';
 import { captureTabContext, downloadContextFile } from './context.mjs';
 import { dashboard, normalizeRemoteLink, remoteLinkKey } from './remote.mjs';
+import { installPinTracking } from './pins.mjs';
 
 installAttachmentMessaging();
+installPinTracking(discardStagedContext);
 
 const contextMenuId = 'page-context';
 const copySelectionId = 'copy-antigravity-selection';
@@ -48,12 +50,10 @@ async function configureRemotePanel() {
   await chrome.sidePanel.setOptions({ path: normalizeRemoteLink(settings[remoteLinkKey]) ?? dashboard });
 }
 
-chrome.action.onClicked.addListener(async ({ windowId }) => {
-  try {
-    await Promise.all([chrome.sidePanel.open({ windowId }), configureRemotePanel()]);
-  } catch (error) {
-    console.error('Could not open Antigravity in the side panel', error);
-  }
+chrome.action.onClicked.addListener(({ id: tabId, windowId }) => {
+  // A tab-specific panel previously disabled at unpin can still use the global panel.
+  void Promise.any([chrome.sidePanel.open({ windowId }), chrome.sidePanel.open({ tabId })]).catch(console.error);
+  void configureRemotePanel().catch(console.error);
 });
 
 chrome.contextMenus.onClicked.addListener(async ({ menuItemId }, tab) => {

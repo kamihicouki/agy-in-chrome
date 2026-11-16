@@ -1,4 +1,5 @@
 import { captureMarkdown } from './markdown.mjs';
+import { panelPin, rememberPanelPin, sourceEpoch, togglePin } from './pins.mjs';
 
 const officialOrigin = 'https://antigravity.google.com';
 const rendererOrigin = 'https://antigravity.static.usercontent.goog';
@@ -52,10 +53,10 @@ function isPanelSender(sender) {
   }
 }
 
-async function focusedSource() {
+async function focusedSource({ passive = false } = {}) {
   const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
   if (win.id == null) throw new Error('Chrome の対象ウィンドウを選んでください。');
-  if (!win.focused) {
+  if (!win.focused && !passive) {
     // Native panel focus can leave the browser window flag unset. The caller
     // still checks the composer focus; only accept this case with one window.
     const windows = await chrome.windows.getAll({ windowTypes: ['normal'] });
@@ -69,6 +70,14 @@ async function focusedSource() {
 
 const stagedKey = windowId => 'agy-staged-context-' + windowId;
 
+export async function discardStagedContext(tabId, windowId) {
+  await navigator.locks.request('agy-stage-' + windowId, async () => {
+    const key = stagedKey(windowId);
+    const { [key]: staged } = await chrome.storage.session.get(key);
+    if (staged?.tabId === tabId) await chrome.storage.session.remove(key);
+  });
+}
+
 async function getStaged(windowId) {
   const key = stagedKey(windowId);
   const { [key]: staged } = await chrome.storage.session.get(key);
@@ -78,11 +87,14 @@ async function getStaged(windowId) {
 
 export async function stageContext(tab, format) {
   if (!sourceHost(tab.url)) throw new Error('このページは添付できません。');
+  const epoch = sourceEpoch(tab.windowId);
   const context = format === 'image' ? await captureImage(tab) : await captureMarkdown(chrome, tab);
   if (!context) throw new Error('ページ資料を取得できませんでした。');
+  if (epoch !== sourceEpoch(tab.windowId)) throw new Error('元のページが切り替わりました。');
   await chrome.storage.session.set({
     [stagedKey(tab.windowId)]: {
-      ...context, id: crypto.randomUUID(), format, title: context.title || tab.title || 'ページ資料',
+      ...context, id: crypto.randomUUID(), format, tabId: tab.id, sourceUrl: tab.url,
+      title: context.title || tab.title || 'ページ資料',
       expires: Date.now() + stagedMs,
     },
   });
@@ -145,12 +157,17 @@ async function recordPanelObservation(message, sender) {
 async function handlePanelRequest(message, sender) {
   if (message.action === 'observe') return recordPanelObservation(message, sender);
   if (!isPanelSender(sender)) throw new Error('公式サイドパネルで操作してください。');
+  if (message.action === 'pin-toggle') return togglePin(message.view, sender);
   if (!await chrome.permissions.contains(composerPermissions)) {
     return { ok: false, denied: true, error: '拡張の設定で公式 Add context の添付を有効にしてください。' };
   }
   if (message.action === 'available') return { ok: true };
-  const { windowId, tab } = await focusedSource();
-  const staged = await getStaged(windowId);
+  const { windowId, tab } = await focusedSource({ passive: message.action === 'pin-state' });
+  if (message.action === 'pin-state') return rememberPanelPin(tab, message.view, sender);
+  const epoch = sourceEpoch(windowId);
+  const { pin, route } = await panelPin(tab, message.view, sender);
+  const stored = await getStaged(windowId);
+  const staged = stored?.tabId === tab?.id && stored?.sourceUrl === tab?.url ? stored : null;
   const now = Date.now();
 
   if (message.action === 'list') {
@@ -160,8 +177,10 @@ async function handlePanelRequest(message, sender) {
     const sourceKey = crypto.randomUUID();
     const host = sourceHost(tab?.url);
     leases.set(sourceKey, {
-      windowId, tabId: tab?.id, url: tab?.url, stagedId: staged?.id,
-      senderUrl: sender.url, senderDocumentId: sender.documentId, expires: now + leaseMs,
+      windowId, tabId: tab?.id, url: tab?.url, stagedId: staged?.id, epoch,
+      conversation: route?.url, pinToken: pin?.token,
+      senderUrl: sender.url, senderDocumentId: sender.documentId, documentKey: message.view?.documentKey,
+      expires: now + leaseMs,
     });
     return {
       ok: true, sourceKey, active: Boolean(host),
@@ -169,15 +188,22 @@ async function handlePanelRequest(message, sender) {
     };
   }
 
-  if (message.action !== 'take' || !['active', 'staged'].includes(message.source) ||
-      !['markdown', 'image'].includes(message.format)) throw new Error('添付操作が不明です。');
   const lease = leases.get(message.sourceKey);
-  leases.delete(message.sourceKey);
   if (!lease || lease.expires <= now || lease.windowId !== windowId ||
       lease.senderUrl !== sender.url || lease.senderDocumentId !== sender.documentId ||
-      lease.tabId !== tab?.id || lease.url !== tab?.url) {
+      lease.documentKey !== message.view?.documentKey ||
+      lease.tabId !== tab?.id || lease.url !== tab?.url || lease.epoch !== epoch || epoch !== sourceEpoch(windowId) ||
+      lease.conversation !== route?.url || lease.pinToken !== pin?.token) {
+    leases.delete(message.sourceKey);
     throw new Error('Add context を開き直して添付先を確認してください。');
   }
+  if (message.action === 'verify' && lease.taken) {
+    leases.delete(message.sourceKey);
+    return { ok: true };
+  }
+  if (message.action !== 'take' || lease.taken || !['active', 'staged'].includes(message.source) ||
+      !['markdown', 'image'].includes(message.format)) throw new Error('添付操作が不明です。');
+  lease.taken = true;
   if (message.source === 'staged') {
     if (!staged || staged.id !== lease.stagedId || staged.format !== message.format) {
       throw new Error('用意したページ資料が変わりました。Add context を開き直してください。');

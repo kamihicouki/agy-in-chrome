@@ -79,3 +79,57 @@
     outline-color: Highlight;
   }
 }
+.agy-pin-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-inline-start: 5px;
+  border-inline-start: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.agy-pin-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.agy-pin-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agy-pin-toggle:disabled { opacity: 0.45; cursor: default; }
+.agy-pin-toggle:not(:disabled):hover,
+.agy-pin-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, currentColor 13%, transparent);
+}
+.agy-pin-toggle:focus-visible { outline: 1px solid currentColor; }
+
+.agy-brand-chip,
+.agy-pin-state:not([hidden]) {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.agy-microphone-notice .agy-brand-chip { margin-inline-end: 6px; }

@@ -48,3 +48,13 @@ form { border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
 #remote-link[aria-invalid="true"] { border-color: currentColor; }
 .remote-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .quiet-button { background: transparent; color: var(--action); padding-inline: 0; }
+.agy-brand-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}

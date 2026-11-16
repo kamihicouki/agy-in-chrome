@@ -26,6 +26,9 @@
   let statusTimer;
   let microphoneNotice;
   let microphoneCheck = 0;
+  let pinUI;
+  let checkingPin = false;
+  let pinBusy = false;
   let lastEditorCounts;
   const unverifiedDrafts = new WeakMap();
 
@@ -44,8 +47,11 @@
 
   let observedOuterUrl;
   let routeFingerprint;
+  const pinToken = officialPage ? new URLSearchParams(location.hash.slice(1)).get('agy-tab-pin') : null;
+  const documentKey = crypto.randomUUID();
   const routeRequest = 'agy-chrome-route-request';
   const routeReply = 'agy-chrome-route-reply';
+  const routeChanged = 'agy-chrome-route-changed';
 
   function replyWithRoute(event) {
     if (event.origin !== rendererOrigin || event.data?.type !== routeRequest ||
@@ -62,11 +68,13 @@
       observedOuterUrl = location.href;
       routeFingerprint = crypto.randomUUID();
     }
-    event.source.postMessage({ type: routeReply, nonce: event.data.nonce, routeFingerprint }, rendererOrigin);
+    event.source.postMessage({
+      type: routeReply, nonce: event.data.nonce, routeFingerprint, url: location.href, pinToken,
+    }, rendererOrigin);
   }
 
   function conversationRoute() {
-    if (officialPage) return Promise.resolve(location.href);
+    if (officialPage) return Promise.resolve({ fingerprint: location.href, url: location.href, pinToken, documentKey });
     return new Promise((resolve, reject) => {
       const nonce = crypto.randomUUID();
       function receive(event) {
@@ -75,7 +83,10 @@
             typeof event.data.routeFingerprint !== 'string') return;
         clearTimeout(timeout);
         window.removeEventListener('message', receive);
-        resolve(event.data.routeFingerprint);
+        resolve({
+          fingerprint: event.data.routeFingerprint, url: event.data.url, pinToken: event.data.pinToken,
+          documentKey, rendererUrl: location.href,
+        });
       }
       const timeout = setTimeout(() => {
         window.removeEventListener('message', receive);
@@ -102,6 +113,101 @@
   function conversationEditor() {
     const candidates = visibleEditors().filter(isMessageEditor);
     return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  function extensionChip() {
+    const chip = document.createElement('span');
+    chip.className = 'agy-brand-chip';
+    chip.textContent = 'agy in chrome';
+    return chip;
+  }
+
+  async function toggleConversationPin() {
+    if (pinBusy) return;
+    const editor = conversationEditor();
+    if (editor) {
+      let composer = editor.parentElement;
+      while (composer && composer !== document.body &&
+        ![...composer.querySelectorAll(controlSelector)].some(node => label(node) === 'Add context')) {
+        composer = composer.parentElement;
+      }
+      const hasAttachment = composer && composer !== document.body &&
+        [...composer.querySelectorAll(controlSelector)].some(node => visible(node) && /^Remove .+/i.test(label(node)));
+      if (draftText(editor).trim() || hasAttachment) {
+        report('下書きがあるため、内容を保存してから会話の固定を切り替えてください。');
+        return;
+      }
+    }
+    pinBusy = true;
+    try {
+      if (!document.hasFocus() || document.visibilityState !== 'visible') return;
+      const result = await request('pin-toggle', undefined, undefined, undefined, pinUI?.view);
+      if (!result?.ok) report(result?.error ?? '会話の固定を切り替えられませんでした。');
+    } catch (error) {
+      report(error.message);
+    } finally {
+      pinBusy = false;
+      void refreshConversationPin();
+    }
+  }
+
+  async function refreshConversationPin() {
+    if (checkingPin || pinBusy || document.visibilityState !== 'visible') return;
+    const search = [...document.querySelectorAll(controlSelector)].find(node =>
+      (label(node) || node.title) === 'Search Conversations' && visible(node));
+    if (!search) return;
+    checkingPin = true;
+    try {
+      const view = await conversationRoute();
+      const state = await request('pin-state', undefined, undefined, undefined, view);
+      if (!search.isConnected) return;
+      if (!pinUI?.group.isConnected || pinUI.search !== search) {
+        pinUI?.group.remove();
+        const group = document.createElement('span');
+        group.className = 'agy-pin-controls';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'agy-pin-toggle';
+        button.setAttribute('aria-label', 'このタブに会話を固定');
+        button.title = 'このタブに会話を固定・解除';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('aria-hidden', 'true');
+        const path = document.createElementNS(svg.namespaceURI, 'path');
+        path.setAttribute('d', 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM3 9h18M6 6.5h3');
+        svg.append(path);
+        button.append(svg);
+        button.addEventListener('click', event => {
+          if (event.isTrusted) void toggleConversationPin();
+        });
+        const badge = document.createElement('span');
+        badge.className = 'agy-pin-state';
+        badge.textContent = 'このタブに固定';
+        group.append(button, extensionChip(), badge);
+        search.after(group);
+        pinUI = { group, button, badge, search };
+      }
+      const pressed = Boolean(state?.pinned || view.pinToken);
+      pinUI.view = view;
+      if (pinUI.button.disabled === Boolean(state?.ready)) pinUI.button.disabled = !state?.ready;
+      const hint = state?.ready ? 'このタブに会話を固定・解除' :
+        state?.error ?? '固定する公式会話を開いてください。';
+      if (pinUI.button.title !== hint) pinUI.button.title = hint;
+      if (pinUI.button.getAttribute('aria-pressed') !== String(pressed)) {
+        pinUI.button.setAttribute('aria-pressed', String(pressed));
+      }
+      if (pinUI.badge.hidden === pressed) pinUI.badge.hidden = !pressed;
+    } catch {
+      disableConversationPin();
+    } finally {
+      checkingPin = false;
+    }
+  }
+
+  function disableConversationPin() {
+    if (!pinUI) return;
+    pinUI.button.disabled = true;
+    pinUI.view = null;
   }
 
   function contextMenu() {
@@ -236,8 +342,8 @@
     statusTimer = setTimeout(() => status.remove(), 6000);
   }
 
-  function request(action, format, source, sourceKey) {
-    return chrome.runtime.sendMessage({ type: 'agy-context', action, format, source, sourceKey });
+  function request(action, format, source, sourceKey, view) {
+    return chrome.runtime.sendMessage({ type: 'agy-context', action, format, source, sourceKey, view });
   }
 
   function updateEditorObservation() {
@@ -296,7 +402,8 @@
     message.setAttribute('role', 'status');
     element.append(message);
     composer.before(element);
-    message.textContent = 'agy in chrome · ' + text;
+    element.prepend(extensionChip());
+    message.textContent = text;
     const listener = new AbortController();
     microphoneNotice = { element, editor, control, url, listener };
     permission?.addEventListener('change', clearMicrophoneNotice, { signal: listener.signal });
@@ -321,13 +428,17 @@
     busy = true;
     try {
       const originalRoute = await conversationRoute();
-      if (selected.route !== originalRoute || !stillCurrent()) {
+      if (selected.route.fingerprint !== originalRoute.fingerprint || !stillCurrent()) {
         throw new Error('会話が切り替わりました。Add context を開き直してください。');
       }
-      const context = await request('take', format, source, selected.sourceKey);
+      const context = await request('take', format, source, selected.sourceKey, originalRoute);
       if (context?.denied) menuGroup?.remove();
       if (!context?.ok) throw new Error(context?.error || 'Chrome ページの資料を取得できませんでした。');
-      if (originalRoute !== await conversationRoute() || !stillCurrent()) {
+      if (originalRoute.fingerprint !== (await conversationRoute()).fingerprint || !stillCurrent()) {
+        throw new Error('会話が切り替わりました。もう一度選んでください。');
+      }
+      const verified = await request('verify', format, source, selected.sourceKey, originalRoute);
+      if (!verified?.ok || originalRoute.fingerprint !== (await conversationRoute()).fingerprint || !stillCurrent()) {
         throw new Error('会話が切り替わりました。もう一度選んでください。');
       }
       if (operation === 'attach') {
@@ -440,9 +551,13 @@
     pendingMenu = opening;
     try {
       const route = await conversationRoute();
-      const payload = await request('list');
+      const payload = await request('list', undefined, undefined, undefined, route);
       const selected = { ...payload, route };
-      if (pendingMenu !== opening || !visible(menu) || !selected?.ok) return;
+      if (pendingMenu !== opening || !visible(menu)) return;
+      if (!selected?.ok) {
+        if (selected?.error) report(selected.error);
+        return;
+      }
       const group = createMenuGroup(menu);
       if (selected.sourceKey && selected.active) {
         addOption(group, menu, selected, '現在の Chrome ページを添付', 'attach', 'active', 'markdown');
@@ -459,7 +574,7 @@
         const heading = document.createElement('div');
         heading.className = 'agy-context-heading';
         heading.setAttribute('aria-hidden', 'true');
-        heading.textContent = 'agy in chrome';
+        heading.append(extensionChip());
         group.prepend(heading);
         menuGroup = group;
         menu.append(group);
@@ -486,11 +601,32 @@
 
   function startMenuObserver() {
     if (officialPage) window.addEventListener('message', replyWithRoute);
+    window.addEventListener('message', event => {
+      if (!officialFrame || event.origin !== officialOrigin || event.source !== window.parent ||
+        event.data?.type !== routeChanged) return;
+      disableConversationPin();
+    });
+    window.navigation?.addEventListener('currententrychange', () => {
+      disableConversationPin();
+      if (!officialPage) return;
+      for (const frame of document.querySelectorAll('iframe')) {
+        frame.contentWindow?.postMessage({ type: routeChanged }, rendererOrigin);
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      disableConversationPin();
+      pendingMenu = null;
+      void refreshConversationPin();
+    });
+    setInterval(() => { void refreshConversationPin(); }, 650);
     document.addEventListener('click', event => {
       const control = event.target instanceof Element ? event.target.closest(controlSelector) : null;
       if (event.isTrusted && control) {
         const name = label(control);
-        if (name === 'Add context') allowedUntil = Date.now() + 60_000;
+        if (name === 'Add context') {
+          allowedUntil = Date.now() + 60_000;
+          pendingMenu = null;
+        }
         if (isMicrophoneButton(control)) void explainMicrophone(control);
       }
       scheduleMenuCheck();
