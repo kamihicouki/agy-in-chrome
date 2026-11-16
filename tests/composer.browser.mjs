@@ -47,8 +47,7 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
         async sendMessage(req) {
           if (req.action === 'available') return { ok: true };
           if (req.action === 'list') return {
-            ok: true, title: '公開フィクスチャ', sourceKey: 'fixture', staged: true,
-            stagedTitle: '公開フィクスチャ', stagedImage: true,
+            ok: true, active: true, sourceKey: 'fixture', staged: true, stagedImage: true,
           };
           if (req.sourceKey !== 'fixture') throw new Error('Source identity missing');
           if (document.body.dataset.reject === 'true') return { ok: false, error: '元のタブが切り替わりました。' };
@@ -66,9 +65,9 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
     await draft.click();
     assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き\n\n# Synthetic Markdown');
     await page.getByRole('menuitem', { name: /現在の Chrome ページを添付/ }).click();
-    await page.getByText('chrome-page.md', { exact: true }).waitFor();
+    await page.getByText(/^chrome-page-[a-f0-9]+\.md$/).waitFor();
     await page.getByRole('menuitem', { name: /用意した画像を添付/ }).click();
-    await page.getByText('chrome-page.png', { exact: true }).waitFor();
+    await page.getByText(/^chrome-page-[a-f0-9]+\.png$/).waitFor();
     await page.locator('body').evaluate(body => { body.dataset.reject = 'true'; });
     await draft.click();
     await page.getByRole('status').getByText('元のタブが切り替わりました。').waitFor();
@@ -119,7 +118,7 @@ test('a parent route change cancels insertion even when the child editor stays m
       chrome.runtime = {
         async sendMessage(request) {
           if (request.action === 'available') return { ok: true };
-          if (request.action === 'list') return { ok: true, title: 'Fixture', sourceKey: 'fixture' };
+          if (request.action === 'list') return { ok: true, active: true, sourceKey: 'fixture' };
           return new Promise(resolve => {
             window.finishCapture = () => resolve({ ok: true, text: 'Context for the original draft' });
           });

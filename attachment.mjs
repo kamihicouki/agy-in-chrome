@@ -126,8 +126,8 @@ async function handlePanelRequest(message, sender) {
       senderUrl: sender.url, senderDocumentId: sender.documentId, expires: now + leaseMs,
     });
     return {
-      ok: true, sourceKey, title: host ? (tab.title || new URL(tab.url).hostname) : '',
-      staged: Boolean(staged), stagedTitle: staged?.title, stagedImage: staged?.format === 'image',
+      ok: true, sourceKey, active: Boolean(host),
+      staged: Boolean(staged), stagedImage: staged?.format === 'image',
     };
   }
 

@@ -13,6 +13,7 @@
   let pendingMenu;
   let menuGroup;
   let scheduled = false;
+  let allowedUntil = 0;
   let busy = false;
   let status;
   let statusTimer;
@@ -131,7 +132,8 @@
   }
 
   async function attachFile(input, format, payload, stillCurrent) {
-    const name = format === 'image' ? 'chrome-page.png' : 'chrome-page.md';
+    const extension = format === 'image' ? '.png' : '.md';
+    const name = 'chrome-page-' + crypto.randomUUID().slice(0, 8) + extension;
     const mime = format === 'image' ? 'image/png' : 'text/markdown';
     let contents = payload.text;
     if (format === 'image') {
@@ -242,6 +244,10 @@
       report(error.message);
     } finally {
       busy = false;
+      pendingMenu = null;
+      menuGroup?.remove();
+      menuGroup = null;
+      if (visible(menu)) scheduleMenuCheck();
     }
   }
 
@@ -263,7 +269,7 @@
   }
 
   async function showActions() {
-    const menu = conversationEditor() ? contextMenu() : null;
+    const menu = Date.now() <= allowedUntil && conversationEditor() ? contextMenu() : null;
     if (pendingMenu?.element === menu) return;
 
     menuGroup?.remove();
@@ -281,15 +287,13 @@
       const group = document.createElement('div');
       group.setAttribute('role', 'group');
       group.setAttribute('aria-label', 'Chrome ページ');
-      if (selected.sourceKey && selected.title) {
-        const description = ' · ' + selected.title;
-        addOption(group, menu, selected, '現在の Chrome ページを添付' + description, 'attach', 'active', 'markdown');
+      if (selected.sourceKey && selected.active) {
+        addOption(group, menu, selected, '現在の Chrome ページを添付', 'attach', 'active', 'markdown');
         addOption(group, menu, selected, '現在の Chrome ページを下書きに挿入', 'draft', 'active', 'markdown');
       }
       if (selected.staged) {
-        const description = selected.stagedTitle ? ' · ' + selected.stagedTitle : '';
-        addOption(group, menu, selected, (selected.stagedImage ? '用意した画像を添付' : '用意した本文を添付') +
-          description, 'attach', 'staged', selected.stagedImage ? 'image' : 'markdown');
+        addOption(group, menu, selected, selected.stagedImage ? '用意した画像を添付' : '用意した本文を添付',
+          'attach', 'staged', selected.stagedImage ? 'image' : 'markdown');
         if (!selected.stagedImage) {
           addOption(group, menu, selected, '用意した本文を下書きに挿入', 'draft', 'staged', 'markdown');
         }
@@ -318,7 +322,13 @@
 
   function startMenuObserver() {
     if (officialPage) window.addEventListener('message', replyWithRoute);
-    document.addEventListener('click', scheduleMenuCheck, true);
+    document.addEventListener('click', event => {
+      const control = event.target instanceof Element ? event.target.closest(controlSelector) : null;
+      if (event.isTrusted && control && label(control) === 'Add context') {
+        allowedUntil = Date.now() + 60_000;
+      }
+      scheduleMenuCheck();
+    }, true);
     document.addEventListener('keydown', event => {
       scheduleMenuCheck();
       if (!menuGroup?.isConnected || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
