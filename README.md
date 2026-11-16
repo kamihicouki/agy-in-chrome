@@ -10,3 +10,5 @@ Chrome のサイドパネルから、Google Antigravity の公式 Web アプリ�
 公式サイトの公開 Web App Manifest は `start_url: "/"`、`display: "standalone"` です。[公開マニフェスト](https://antigravity.google.com/assets/manifest.json)
 
 0.1.x の iframe 試作では、ログイン済みの Chrome でも Google が 403 を返す例を確認しました。0.2.0 は Chrome の Split View を使い、公式サイトを通常のタブとして開きます。拡張が要求する権限は `sidePanel` だけです。[Split View API](https://developer.chrome.com/blog/split-view-api-extensions)
+
+配布 ZIP は [GitHub Releases](https://github.com/kamihicouki/antigravity-sidebar/releases) にあります。Chrome Web Store の初回申請と自動更新の設定は [公開手順](docs/store-release.md) を参照してください。
