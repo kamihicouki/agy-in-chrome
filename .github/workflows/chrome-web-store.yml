@@ -19,9 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: |
-          node --check panel.js
-          node --check context.mjs
-          node --check background.mjs
+          for script in ./*.js ./*.mjs; do node --check "$script"; done
           node --test tests/*.test.mjs
           node --check scripts/publish-store.mjs
           python3 scripts/package.py

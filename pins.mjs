@@ -1,4 +1,4 @@
-import { conversationLink } from './remote.mjs';
+import { conversationLink, instanceLink } from './remote.mjs';
 
 const pinKey = tabId => 'agy-conversation-pin-' + tabId;
 const pinMarker = 'agy-tab-pin';
@@ -22,10 +22,11 @@ function pinnedPath(url, token) {
   return target.href;
 }
 
-export async function panelPin(tab, view, sender, { remember = false } = {}) {
+export async function panelPin(tab, view, sender, { remember = false, recover = false } = {}) {
   if (changing.has(tab?.id)) throw new Error('このタブの会話に切り替えています。');
   const pin = Number.isInteger(tab?.id) ? await readPin(tab.id) : null;
-  if ((view?.pinToken ?? null) !== (pin?.token ?? null)) {
+  const recovering = recover && pin && !view?.pinToken && instanceLink(pin.url) === instanceLink(view?.url);
+  if (!recovering && (view?.pinToken ?? null) !== (pin?.token ?? null)) {
     throw new Error('このタブの会話に切り替えています。表示を確認してからもう一度操作してください。');
   }
   const explicitRoute = conversationLink(view?.url);
@@ -42,11 +43,14 @@ export async function panelPin(tab, view, sender, { remember = false } = {}) {
     ? view.fingerprint : null;
   const sameOrigin = explicitRoute && sender.origin === new URL(explicitRoute.url).origin;
   const rendererRoute = renderedId ? conversationLink(view?.url, renderedId) : null;
+  const instance = instanceLink(view?.url);
+  const rendererHome = /^\/web\/[\w.-]+\/?$/.test(rendererPath);
+  const home = instance && rendererHome && !explicitRoute ? { url: instance, id: null } : null;
   const route = sameOrigin ? explicitRoute : rendererRoute && (
     !explicitRoute || explicitRoute.id === renderedId ||
     (identifier && rendererRoutes.get(identifier) === view.url) ||
     (pin?.url === rendererRoute.url && tab?.id != null)
-  ) ? rendererRoute : null;
+  ) ? rendererRoute : home;
   if ((pin || explicitRoute) && !route) {
     throw new Error('公式の会話を読み込んでいます。表示を確認してからもう一度操作してください。');
   }
@@ -56,7 +60,7 @@ export async function panelPin(tab, view, sender, { remember = false } = {}) {
     if (rendererRoutes.size > 128) rendererRoutes.delete(rendererRoutes.keys().next().value);
   }
   if (changing.has(tab?.id)) throw new Error('このタブの会話に切り替えています。');
-  if (pin && remember && route.url !== pin.url) {
+  if (pin && remember && !recovering && route.id && route.url !== pin.url) {
     await chrome.storage.session.set({ [pinKey(tab.id)]: { ...pin, url: route.url } });
   }
   return { pin, route };
@@ -69,7 +73,7 @@ export async function togglePin(view, sender) {
   if (prepared.expires <= Date.now() || prepared.senderUrl !== sender.url ||
     prepared.viewUrl !== view?.url || prepared.rendererUrl !== view?.rendererUrl ||
     prepared.fingerprint !== view?.fingerprint ||
-    prepared.pin?.token !== (view?.pinToken ?? undefined) ||
+    prepared.viewPinToken !== view?.pinToken ||
     prepared.epoch !== sourceEpoch(prepared.tab.windowId) || changing.has(prepared.tab.id)) {
     throw new Error('Chrome タブまたは会話が切り替わりました。表示を確認してから押し直してください。');
   }
@@ -108,7 +112,7 @@ export async function togglePin(view, sender) {
 export async function rememberPanelPin(tab, view, sender) {
   const epoch = sourceEpoch(tab?.windowId);
   return navigator.locks.request(pinKey(tab?.id), async () => {
-    const { pin, route } = await panelPin(tab, view, sender, { remember: true });
+    const { pin, route } = await panelPin(tab, view, sender, { remember: true, recover: true });
     if (route && Number.isInteger(tab?.id) && /^[a-f0-9-]{36}$/.test(view?.documentKey) &&
       sourceEpoch(tab.windowId) === epoch) {
       const expires = Date.now() + 3000;
@@ -117,7 +121,7 @@ export async function rememberPanelPin(tab, view, sender) {
       }
       preparedToggles.set(view.documentKey, {
         tab, pin, route, expires, epoch, senderUrl: sender.url,
-        viewUrl: view.url, rendererUrl: view.rendererUrl, fingerprint: view.fingerprint,
+        viewUrl: view.url, rendererUrl: view.rendererUrl, fingerprint: view.fingerprint, viewPinToken: view.pinToken,
       });
     }
     return { ok: true, pinned: Boolean(pin), ready: Boolean(route) };
@@ -128,7 +132,7 @@ export function installPinTracking(discardStagedContext) {
   chrome.permissions.onRemoved.addListener(() => preparedToggles.clear());
   chrome.windows.onFocusChanged.addListener(windowId => {
     if (windowId < 0) return;
-    if (focusedWindow !== undefined && focusedWindow !== windowId) focusEpoch++;
+    if (focusedWindow !== windowId) focusEpoch++;
     focusedWindow = windowId;
   });
   chrome.tabs.onActivated.addListener(({ windowId }) => advance(windowId));

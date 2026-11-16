@@ -11,17 +11,23 @@ export function normalizeRemoteLink(value) {
   return target.href;
 }
 
-export function conversationLink(value, rendererId) {
+export function instanceLink(value) {
   if (typeof value !== 'string' || value.length > 2048) return null;
   let route;
   try { route = new URL(value); } catch { return null; }
   if (route.origin !== new URL(dashboard).origin || route.username || route.password ||
     !/^\/r\/[\w-]+\/?$/.test(route.pathname) || route.searchParams.getAll('p').length > 1) return null;
+  return new URL(route.pathname.replace(/\/$/, ''), dashboard).href;
+}
+
+export function conversationLink(value, rendererId) {
+  const instance = instanceLink(value);
+  if (!instance) return null;
   const id = rendererId === undefined
-    ? /^c\/([\w-]+)(?:\?.*)?$/.exec(route.searchParams.get('p'))?.[1]
+    ? /^c\/([\w-]+)(?:\?.*)?$/.exec(new URL(value).searchParams.get('p'))?.[1]
     : /^[\w-]+$/.test(rendererId) ? rendererId : null;
   if (!id) return null;
-  const target = new URL(route.pathname.replace(/\/$/, ''), dashboard);
+  const target = new URL(instance);
   target.searchParams.set('p', 'c/' + id);
   return { url: target.href, id };
 }

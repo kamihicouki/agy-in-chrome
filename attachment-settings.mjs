@@ -70,7 +70,7 @@ async function refreshSetup() {
 }
 
 function installAllSitePermission() {
-  const refresh = () => refreshSetup().catch(() => {
+  const refresh = () => (grant ? refreshAllSites() : refreshSetup()).catch(() => {
     allSitesStatus.textContent = '許可の状態を確認できませんでした。';
   });
   chrome.permissions.onAdded.addListener(refresh);
@@ -81,7 +81,13 @@ function installAllSitePermission() {
     try {
       const granted = await chrome.permissions.request(allSitePermissions);
       await refreshAllSites();
-      if (!granted) allSitesStatus.textContent = '一括許可を見送りました。サイトごとに許可して使えます。';
+      if (granted && grant) {
+        await chrome.storage.session.remove('agy-site-grant-' + windowId);
+        button.hidden = true;
+        allSitesStatus.textContent = '一括許可済み。この設定タブを閉じ、元のページで Add Context を開き直してください。';
+      } else if (!granted) {
+        allSitesStatus.textContent = '一括許可を見送りました。サイトごとに許可して使えます。';
+      }
     } catch {
       allSitesStatus.textContent = '一括許可を設定できませんでした。サイトごとに許可して使えます。';
     } finally {
@@ -101,7 +107,11 @@ async function configure() {
     }
     permissions = { origins: [pending.host] };
     description.textContent = '資料を選んだときだけ、' + pending.host.slice(0, -2) + ' の内容を読み取ります。';
+    button.textContent = 'このサイトだけ許可';
     button.hidden = false;
+    allSites.hidden = false;
+    await refreshAllSites();
+    installAllSitePermission();
   } else {
     await refreshSetup();
     installAllSitePermission();
