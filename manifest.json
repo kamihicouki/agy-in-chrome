@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "agy in chrome",
   "description": "Open the official Antigravity Remote Control in the Chrome side panel.",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "minimum_chrome_version": "157",
   "permissions": [
     "sidePanel",
@@ -27,5 +27,12 @@
     "32": "icons/32.png",
     "48": "icons/48.png",
     "128": "icons/128.png"
-  }
+  },
+  "optional_permissions": [
+    "tabs"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
 }

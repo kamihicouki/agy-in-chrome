@@ -1,0 +1,176 @@
+import { captureMarkdown } from './markdown.mjs';
+
+const officialOrigin = 'https://antigravity.google.com';
+const rendererOrigin = 'https://antigravity.static.usercontent.goog';
+const leaseMs = 60_000;
+const stagedMs = 5 * 60_000;
+const leases = new Map();
+
+export const officialHosts = [officialOrigin + '/*', rendererOrigin + '/*'];
+export const composerPermissions = { origins: officialHosts, permissions: ['tabs'] };
+export const attachmentSetupMenu = 'configure-antigravity-attachments';
+export const stageMarkdownMenu = 'stage-antigravity-markdown';
+export const stageImageMenu = 'stage-antigravity-image';
+
+export function sourceHost(value) {
+  if (!value) return null;
+  const url = new URL(value);
+  if (!['https:', 'http:'].includes(url.protocol) ||
+      [officialOrigin, rendererOrigin].includes(url.origin)) return null;
+  return url.protocol + '//' + url.hostname + '/*';
+}
+
+export async function registerComposer() {
+  const id = 'agy-context-composer';
+  const [existing] = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
+  if (!await chrome.permissions.contains(composerPermissions)) {
+    if (existing) await chrome.scripting.unregisterContentScripts({ ids: [id] });
+    return false;
+  }
+  if (!existing) {
+    await chrome.scripting.registerContentScripts([{
+      id, matches: officialHosts, js: ['composer.js'], allFrames: true,
+      runAt: 'document_idle', persistAcrossSessions: true,
+    }]);
+  }
+  return true;
+}
+
+function isPanelSender(sender) {
+  if (sender.id !== chrome.runtime.id || (sender.tab?.id != null && sender.tab.id !== -1)) return false;
+  try {
+    const origin = new URL(sender.url).origin;
+    return origin === sender.origin && [officialOrigin, rendererOrigin].includes(origin);
+  } catch {
+    return false;
+  }
+}
+
+async function focusedSource() {
+  const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+  if (!win.focused || win.id == null) throw new Error('Chrome の対象ウィンドウを選んでください。');
+  const [tab] = await chrome.tabs.query({ windowId: win.id, active: true });
+  return { windowId: win.id, tab };
+}
+
+const stagedKey = windowId => 'agy-staged-context-' + windowId;
+
+async function getStaged(windowId) {
+  const key = stagedKey(windowId);
+  const { [key]: staged } = await chrome.storage.session.get(key);
+  if (!staged || staged.expires > Date.now()) return staged;
+  await chrome.storage.session.remove(key);
+}
+
+export async function stageContext(tab, format) {
+  if (!sourceHost(tab.url)) throw new Error('このページは添付できません。');
+  const context = format === 'image' ? await captureImage(tab) : await captureMarkdown(chrome, tab);
+  if (!context) throw new Error('ページ資料を取得できませんでした。');
+  await chrome.storage.session.set({
+    [stagedKey(tab.windowId)]: {
+      ...context, id: crypto.randomUUID(), format, title: context.title || tab.title || 'ページ資料',
+      expires: Date.now() + stagedMs,
+    },
+  });
+}
+
+async function captureImage(tab) {
+  let switched = false;
+  const onActivated = ({ windowId, tabId }) => {
+    if (windowId === tab.windowId && tabId !== tab.id) switched = true;
+  };
+  const onUpdated = (tabId, change) => {
+    if (tabId === tab.id && (change.url || change.status === 'loading')) switched = true;
+  };
+  chrome.tabs.onActivated.addListener(onActivated);
+  chrome.tabs.onUpdated.addListener(onUpdated);
+  let dataUrl;
+  try {
+    const before = await chrome.tabs.get(tab.id);
+    if (!before.active || before.url !== tab.url || before.windowId !== tab.windowId) {
+      throw new Error('元のタブが切り替わりました。');
+    }
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    const after = await chrome.tabs.get(tab.id);
+    if (switched || !after.active || after.url !== tab.url || after.windowId !== tab.windowId) {
+      throw new Error('撮影中にタブが切り替わりました。');
+    }
+  } finally {
+    chrome.tabs.onActivated.removeListener(onActivated);
+    chrome.tabs.onUpdated.removeListener(onUpdated);
+  }
+  if (!dataUrl.startsWith('data:image/png;base64,') || dataUrl.length > 4_000_000) {
+    throw new Error('画像が大きすぎます。Chrome のウィンドウを小さくして再度お試しください。');
+  }
+  return { dataUrl, name: 'antigravity-page-context.png' };
+}
+
+async function handlePanelRequest(message, sender) {
+  if (!isPanelSender(sender)) throw new Error('公式サイドパネルで操作してください。');
+  if (!await chrome.permissions.contains(composerPermissions)) {
+    return { ok: false, denied: true, error: '拡張の設定で公式 Add context の添付を有効にしてください。' };
+  }
+  if (message.action === 'available') return { ok: true };
+  const { windowId, tab } = await focusedSource();
+  const staged = await getStaged(windowId);
+  const now = Date.now();
+
+  if (message.action === 'list') {
+    for (const [key, lease] of leases) {
+      if (lease.expires <= now || leases.size > 64) leases.delete(key);
+    }
+    const sourceKey = crypto.randomUUID();
+    const host = sourceHost(tab?.url);
+    leases.set(sourceKey, {
+      windowId, tabId: tab?.id, url: tab?.url, stagedId: staged?.id,
+      senderUrl: sender.url, senderDocumentId: sender.documentId, expires: now + leaseMs,
+    });
+    return {
+      ok: true, sourceKey, title: host ? (tab.title || new URL(tab.url).hostname) : '',
+      staged: Boolean(staged), stagedTitle: staged?.title, stagedImage: staged?.format === 'image',
+    };
+  }
+
+  if (message.action !== 'take' || !['active', 'staged'].includes(message.source) ||
+      !['markdown', 'image'].includes(message.format)) throw new Error('添付操作が不明です。');
+  const lease = leases.get(message.sourceKey);
+  leases.delete(message.sourceKey);
+  if (!lease || lease.expires <= now || lease.windowId !== windowId ||
+      lease.senderUrl !== sender.url || lease.senderDocumentId !== sender.documentId ||
+      lease.tabId !== tab?.id || lease.url !== tab?.url) {
+    throw new Error('Add context を開き直して添付先を確認してください。');
+  }
+  if (message.source === 'staged') {
+    if (!staged || staged.id !== lease.stagedId || staged.format !== message.format) {
+      throw new Error('用意したページ資料が変わりました。Add context を開き直してください。');
+    }
+    return { ok: true, text: staged.text, dataUrl: staged.dataUrl, name: staged.name };
+  }
+
+  const host = sourceHost(tab?.url);
+  if (!host || tab.id !== lease.tabId || tab.url !== lease.url || message.format !== 'markdown') {
+    throw new Error('元のタブが切り替わったか、添付対象外のページです。');
+  }
+  if (!await chrome.permissions.contains({ origins: [host] })) {
+    const grant = crypto.randomUUID();
+    await chrome.storage.session.set({ ['agy-site-grant-' + windowId]: { grant, host, expires: now + leaseMs } });
+    await chrome.tabs.create({ windowId, url: chrome.runtime.getURL('attachment-settings.html') + '?window=' + windowId + '&grant=' + grant });
+    throw new Error('開いた設定タブでサイトを許可してから、Add context を開き直してください。');
+  }
+  const context = await captureMarkdown(chrome, tab);
+  const finalSource = await focusedSource();
+  if (!context || finalSource.windowId !== windowId || finalSource.tab?.id !== tab.id ||
+      finalSource.tab.url !== tab.url) throw new Error('取得中に元のページが切り替わりました。');
+  return { ok: true, text: context.text, name: 'antigravity-page-context.md' };
+}
+
+export function installAttachmentMessaging() {
+  chrome.runtime.onMessage.addListener((message, sender, respond) => {
+    if (message?.type !== 'agy-context') return false;
+    handlePanelRequest(message, sender).then(respond, error => respond({ ok: false, error: error.message }));
+    return true;
+  });
+  chrome.windows.onRemoved.addListener(windowId => {
+    chrome.storage.session.remove([stagedKey(windowId), 'agy-site-grant-' + windowId]).catch(console.error);
+  });
+}

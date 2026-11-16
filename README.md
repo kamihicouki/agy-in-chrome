@@ -10,6 +10,15 @@
 
 [Google 公式手順](https://antigravity.google/docs/remote-control/)
 
+## Add context から直接添付する（0.6.0 試作）
+
+1. 拡張アイコンを右クリックして「公式 Add context の添付を有効にする」を選び、設定タブで Chrome の許可を確認します。公式パネルに反映するには、「接続先・資料プレビュー」を一度開いてから公式パネルに戻ります。
+2. 公式会話の Add context で「現在の Chrome ページを添付」を選びます。初めてのサイトでは設定タブが開きます。許可した後は、そのタブを閉じて元のページへ戻り、再度項目を選びます。
+3. 公式の添付表示が出ない場合は会話欄を見直してください。本文を貼り付ける場合は Add context の「現在の Chrome ページを下書きに挿入」を選びます。
+4. ページ側から操作する場合は、ページの右クリックメニューで本文または表示範囲の画像を用意し、そのウィンドウの Add context で選びます。画像には表示範囲全体が含まれます。
+
+本試作は公式の添付入力が見つかる場合に限ってファイル添付を試行します。メッセージは公式画面から送信できます。MCP のローカル試作は [検証手順](experiments/mcp-context/README.md) を参照してください。
+
 ## ページ資料を会話に使う
 
 共有元のページを右クリックし、「選択範囲とページ情報を Antigravity 用にコピー」または「表示中のページ資料を Antigravity 用にコピー」を選びます。コピーが成功すると拡張アイコンに ✓ が出ます。サイドパネルで開いている公式会話の入力欄に貼り付けてください。
@@ -23,3 +32,5 @@
 Chrome の拡張機能管理画面で、デベロッパー モードを有効にします。「パッケージ化されていない拡張機能を読み込む」で、リポジトリのルートか配布 ZIP の展開先を選びます。更新時は公式ビューを閉じ、対象の拡張カードで再読み込みします。
 
 配布版と公開手順は [GitHub Releases](https://github.com/kamihicouki/agy-in-chrome/releases) と [Chrome Web Store 公開手順](docs/store-release.md) を参照してください。
+
+隔離ブラウザでの開発検証では Playwright の Chromium を使います。`node --test tests/*.test.mjs tests/composer.browser.mjs experiments/mcp-context/server.test.mjs` を実行します。

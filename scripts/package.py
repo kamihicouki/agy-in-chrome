@@ -16,6 +16,8 @@ if (
     raise SystemExit("manifest.json must have a valid three-part Chrome version")
 
 files = ["manifest.json", "background.mjs", "panel.html", "panel.css", "panel.js", "context.mjs", "remote.mjs"]
+files += ["attachment.mjs", "attachment-settings.html", "attachment-settings.mjs", "composer.js", "markdown.mjs"]
+files += [path.relative_to(ROOT).as_posix() for path in sorted((ROOT / "vendor").glob("*")) if path.is_file()]
 files += [f"icons/{size}.png" for size in (16, 32, 48, 128)]
 dist = ROOT / "dist"
 dist.mkdir(exist_ok=True)
