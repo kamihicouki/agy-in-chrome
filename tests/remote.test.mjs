@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { asPrompt } from '../context.mjs';
+import { asPrompt, captureTabContext } from '../context.mjs';
 import { dashboard, normalizeRemoteLink, openRemote } from '../remote.mjs';
 
 test('Remote Control accepts only the documented device and conversation links', () => {
@@ -76,4 +76,26 @@ test('page context marks a shortened URL and quotes every line', () => {
   });
   assert.match(text, /URL（認証情報・クエリ・フラグメントを省略）: https:\/\/example.com\//);
   assert.match(text, /> first line\n> second line$/);
+});
+
+test('capturing context removes URL secrets and stops when the source changes', async () => {
+  const tab = { id: 7, url: 'https://example.com/page?secret=private#private' };
+  let current = { ...tab, active: true };
+  const chrome = {
+    scripting: { executeScript: async ({ target, args }) => {
+      assert.deepEqual(target, { tabId: 7 });
+      assert.deepEqual(args, [true]);
+      return [{ documentId: 'original', result: { title: 'Example', url: tab.url, viewport: 'Visible text' } }];
+    } },
+    tabs: { get: async () => current },
+  };
+  const { text, documentId } = await captureTabContext(chrome, tab, true);
+  assert.equal(documentId, 'original');
+  assert.match(text, /https:\/\/example.com\/page\n/);
+  assert.match(text, /> Visible text$/);
+  assert.doesNotMatch(text, /secret|private/);
+
+  current = { ...current, active: false };
+  await assert.rejects(captureTabContext(chrome, tab, true), /Source page changed/);
+  assert.equal(await captureTabContext(chrome, { id: 3, url: dashboard }, true), null);
 });

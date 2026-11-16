@@ -1,4 +1,4 @@
-import { asPrompt, readContext } from './context.mjs';
+import { captureTabContext } from './context.mjs';
 import { dashboard, normalizeRemoteLink, openRemote, remoteLinkKey } from './remote.mjs';
 
 const byId = id => document.getElementById(id);
@@ -112,24 +112,16 @@ async function capture(includeViewport) {
   try {
     const windowId = await sourceWindow;
     const [tab] = await chrome.tabs.query({ active: true, windowId });
-    if (tab?.id == null || !tab.url) throw new Error();
-    const url = new URL(tab.url);
-    if (!['https:', 'http:'].includes(url.protocol) || url.hostname === 'antigravity.google.com') {
+    const context = await captureTabContext(chrome, tab, includeViewport);
+    if (context === null) {
       contextStatus.textContent = 'このページからは資料を取得できません。';
       return;
     }
-    const [{ result }] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id }, func: readContext, args: [includeViewport],
-    });
-    const [current] = await chrome.tabs.query({ active: true, windowId });
-    if (current?.id !== tab.id || current.url !== result.url || tab.url !== result.url) throw new Error();
-    const shortenedUrl = Boolean(url.username || url.password || url.search || url.hash);
-    url.username = url.password = url.search = url.hash = '';
-    preview.value = asPrompt({ ...result, url: url.href, shortenedUrl });
+    preview.value = context.text;
     preview.hidden = copy.hidden = false;
     contextStatus.textContent = '内容を確認してコピーし、公式会話の入力欄に貼り付けてください。';
   } catch {
-    contextStatus.textContent = '取得できませんでした。共有元の Web ページで拡張アイコンを右クリックし、「このページの資料を表示」を選んでください。';
+    contextStatus.textContent = '取得できませんでした。共有元の Web ページで拡張アイコンを右クリックし、「接続先・資料プレビュー」を選んでください。';
   } finally {
     controls.forEach(button => { button.disabled = false; });
   }
