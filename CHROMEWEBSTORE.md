@@ -4,7 +4,8 @@
 
 | 項目 | 入力内容 |
 |---|---|
-| 名前 | Antigravity Remote Sidebar |
+| 名前 | agy in chrome |
+| 読み方 | antigravity in chrome |
 | 短い説明 | Open Antigravity from Chrome and prepare context from your current tab. |
 | カテゴリ | Developer Tools |
 | 言語 | 日本語 |
@@ -12,12 +13,12 @@
 | 単一の目的 | 現在の Chrome タブの文脈を用意し、Antigravity の公式 Web アプリを開く。 |
 | アイコン | `icons/128.png` |
 | スクリーンショット | `store/side-panel.png`（640×400） |
-| プライバシーポリシー | https://github.com/kamihicouki/antigravity-sidebar/blob/main/PRIVACY.md |
-| サポート | https://github.com/kamihicouki/antigravity-sidebar/issues |
+| プライバシーポリシー | https://github.com/kamihicouki/agy-in-chrome/blob/main/PRIVACY.md |
+| サポート | https://github.com/kamihicouki/agy-in-chrome/issues |
 
 ## 詳細説明
 
-閲覧中のページを残したまま、Antigravity の公式 Web アプリを隣に表示できます。
+agy in chrome（読み方は antigravity in chrome）は、閲覧中のページを残したまま Antigravity の公式 Web アプリを隣に表示する Chrome 拡張です。
 
 Chrome のツールバーからサイドバーを開き、分割表示、別タブ、別ウィンドウを選べます。「タブの情報を取得」でタイトル、URL、選択テキストを確認できます。チェックを入れると表示領域のテキストも含まれます。「コピーして開く」を押し、公式画面の入力欄に貼り付けてください。
 
@@ -33,5 +34,6 @@ Chrome のツールバーからサイドバーを開き、分割表示、別タ�
 
 | バージョン | 変更 | 状態 |
 |---|---|---|
+| 0.3.1 | 名称を agy in chrome に変更 | 初回申請候補 |
 | 0.3.0 | 表示方法と閲覧タブの文脈共有 | 初回申請候補 |
 | 0.2.1 | ストア用アイコンと初回配布パッケージ | 初回申請用 |

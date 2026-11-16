@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Antigravity Remote Sidebar",
+  "name": "agy in chrome",
   "description": "Open Antigravity from Chrome and prepare context from your current tab.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",
@@ -11,7 +11,7 @@
     "scripting"
   ],
   "action": {
-    "default_title": "Antigravity Remote Sidebar"
+    "default_title": "agy in chrome"
   },
   "background": {
     "service_worker": "background.mjs",

@@ -6,4 +6,4 @@
 
 Antigravity を開くと Chrome が Google の公式サイトに接続します。公式画面に貼り付け、送信する内容には [Google のプライバシーポリシー](https://policies.google.com/privacy) が適用されます。
 
-お問い合わせは [GitHub Issues](https://github.com/kamihicouki/antigravity-sidebar/issues) へお願いします。
+お問い合わせは [GitHub Issues](https://github.com/kamihicouki/agy-in-chrome/issues) へお願いします。

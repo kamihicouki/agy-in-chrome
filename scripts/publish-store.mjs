@@ -43,7 +43,7 @@ if (submitted?.state === 'PENDING_REVIEW' || submitted?.state === 'STAGED') {
   throw new Error(`Another revision is ${submitted.state}. Rerun after its review completes.`);
 }
 
-const zip = await readFile(`dist/antigravity-sidebar-${version}.zip`);
+const zip = await readFile(`dist/agy-in-chrome-${version}.zip`);
 let { uploadState } = await request('upload', { method: 'POST', body: zip, media: true });
 for (let poll = 0; uploadState === 'IN_PROGRESS' && poll < 24; poll += 1) {
   await delay(5_000);

@@ -19,7 +19,7 @@ files = ["manifest.json", "background.mjs", "panel.html", "panel.css", "panel.js
 files += [f"icons/{size}.png" for size in (16, 32, 48, 128)]
 dist = ROOT / "dist"
 dist.mkdir(exist_ok=True)
-archive = dist / f"antigravity-sidebar-{version}.zip"
+archive = dist / f"agy-in-chrome-{version}.zip"
 with ZipFile(archive, "w", ZIP_DEFLATED) as package:
     for file in files:
         package.write(ROOT / file, file)
