@@ -1,5 +1,6 @@
 export const dashboard = 'https://antigravity.google.com/';
 export const remoteLinkKey = 'remoteControlLink';
+const viewKey = 'remoteControlView';
 
 export function normalizeRemoteLink(value) {
   if (typeof value !== 'string' || value.length > 2048) return null;
@@ -10,9 +11,9 @@ export function normalizeRemoteLink(value) {
   return target.href;
 }
 
-export async function openRemote(chrome, url, mode, windowId) {
+export async function openRemote(chrome, url, mode, windowId, { reset, screen } = {}) {
   if (mode === 'window') {
-    await chrome.windows.create({ url, type: 'popup', width: 480 });
+    await openViewer(chrome, url, windowId, reset, screen);
     return;
   }
 
@@ -28,4 +29,45 @@ export async function openRemote(chrome, url, mode, windowId) {
     }
   }
   await chrome.tabs.create({ url, windowId });
+}
+
+async function openViewer(chrome, url, sourceWindowId, reset, screen) {
+  const { [viewKey]: saved } = await chrome.storage.session.get(viewKey);
+  const existing = saved && await chrome.windows.get(saved.windowId, { populate: true }).catch(() => null);
+  if (existing?.type === 'popup' && existing.tabs?.some(tab => tab.id === saved.tabId)) {
+    if (reset || saved.target !== url) {
+      await chrome.tabs.update(saved.tabId, { url, active: true });
+      await chrome.storage.session.set({ [viewKey]: { ...saved, target: url } });
+    }
+    await chrome.windows.update(existing.id, existing.state === 'minimized'
+      ? { focused: true, state: 'normal' } : { focused: true });
+    return;
+  }
+
+  const source = await chrome.windows.get(sourceWindowId);
+  const width = 440;
+  const screenRight = screen?.availLeft + screen?.availWidth;
+  const sourceRight = source.left + source.width;
+  const viewerLeft = Math.min(sourceRight, screenRight - width);
+  const sourceWidth = viewerLeft - source.left;
+  const fitsAlongside = source.state === 'normal' && source.left >= screen?.availLeft &&
+    sourceRight <= screenRight && sourceWidth >= 520;
+  const defaults = { url, type: 'popup', width };
+  let positioned = false;
+  let viewer;
+  if (fitsAlongside) {
+    viewer = await chrome.windows.create({
+      ...defaults, left: viewerLeft, top: source.top, height: source.height,
+    }).catch(() => null);
+    positioned = viewer != null;
+  }
+  if (!viewer) viewer = await chrome.windows.create(defaults);
+  if (viewer?.id == null) throw new Error('Remote Control window did not open');
+  const [tab] = viewer.tabs ?? await chrome.tabs.query({ windowId: viewer.id });
+  if (tab?.id != null) {
+    await chrome.storage.session.set({ [viewKey]: { windowId: viewer.id, tabId: tab.id, target: url } });
+  }
+  if (positioned && sourceWidth < source.width) {
+    await chrome.windows.update(sourceWindowId, { width: sourceWidth }).catch(() => {});
+  }
 }

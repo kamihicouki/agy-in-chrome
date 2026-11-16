@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { asPrompt } from '../context.mjs';
 import { dashboard, normalizeRemoteLink, openRemote } from '../remote.mjs';
 
 test('Remote Control accepts only the documented device and conversation links', () => {
@@ -31,4 +32,48 @@ test('a rejected split opens a normal tab without invoking the local bridge', as
     { url: dashboard, windowId: 5, splitWithTabId: 7, pinned: true },
     { url: dashboard, windowId: 5 },
   ]);
+});
+
+test('the remote viewer is reused without navigating its current conversation', async () => {
+  const session = {};
+  const calls = [];
+  const chrome = {
+    storage: { session: {
+      get: async key => ({ [key]: session[key] }),
+      set: async values => Object.assign(session, values),
+    } },
+    windows: {
+      get: async id => id === 2
+        ? { state: 'normal', left: 0, top: 30, width: 1200, height: 800 }
+        : { id, type: 'popup', tabs: [{ id: 9 }] },
+      create: async options => {
+        calls.push(options);
+        return { id: 3, tabs: [{ id: 9 }] };
+      },
+      update: async (id, values) => { calls.push([id, values]); },
+    },
+    tabs: { update: async (id, values) => { calls.push([id, values]); } },
+  };
+  const screen = { availLeft: 0, availWidth: 1400 };
+  await openRemote(chrome, dashboard, 'window', 2, { screen });
+  await openRemote(chrome, dashboard, 'window', 2, { screen });
+  await openRemote(chrome, dashboard, 'window', 2, { screen, reset: true });
+
+  assert.deepEqual(calls, [
+    { url: dashboard, type: 'popup', width: 440, left: 960, top: 30, height: 800 },
+    [2, { width: 960 }],
+    [3, { focused: true }],
+    [9, { url: dashboard, active: true }],
+    [3, { focused: true }],
+  ]);
+});
+
+
+test('page context marks a shortened URL and quotes every line', () => {
+  const text = asPrompt({
+    title: 'Example', url: 'https://example.com/', shortenedUrl: true,
+    selected: 'first line\nsecond line',
+  });
+  assert.match(text, /URL（認証情報・クエリ・フラグメントを省略）: https:\/\/example.com\//);
+  assert.match(text, /> first line\n> second line$/);
 });

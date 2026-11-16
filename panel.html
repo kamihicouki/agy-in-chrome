@@ -10,7 +10,6 @@
 <body>
   <main>
     <header>
-      <button id="sessions" type="button" aria-expanded="false">会話</button>
       <h1 id="title">agy in chrome</h1>
       <details id="options">
         <summary aria-label="表示オプション">⋯</summary>
@@ -22,11 +21,10 @@
         </div>
       </details>
     </header>
-    <nav id="session-list" aria-label="会話一覧" hidden></nav>
     <section id="welcome" aria-labelledby="desktop-title">
       <h2 id="desktop-title">Antigravity Desktop</h2>
-      <p>Desktop で Remote Control を有効にし、Chrome でも同じ Google アカウントを使います。</p>
-      <button id="desktop" class="primary" type="button">Desktop の会話を開く</button>
+      <p>Desktop と同じ Google アカウントで公式 Remote Control を使います。</p>
+      <button id="desktop" class="primary" type="button">公式サイドパネルに戻る</button>
       <p id="remote-target" hidden></p>
       <details id="remote-settings">
         <summary>接続先リンク</summary>
@@ -44,34 +42,18 @@
       </details>
       <button id="choose-remote" class="quiet-button" type="button" hidden>接続先を選び直す</button>
       <p id="remote-status" role="status"></p>
-      <p class="welcome-note">表示中のタブを資料として添えるには、サイドバーで新しい会話を始めます。</p>
+
     </section>
-    <section id="thread" role="log" aria-label="会話" hidden></section>
-    <footer>
-      <p id="status" role="status"></p>
-      <button id="connect" type="button">サイドバーで新しい会話</button>
-      <a id="local-setup" href="https://github.com/kamihicouki/agy-in-chrome#ローカル-cli-のセットアップ" target="_blank" rel="noopener noreferrer" hidden>ローカル接続の手順</a>
-      <form id="composer" aria-label="メッセージ作成" hidden>
-        <div id="attachment" hidden>
-          <button id="inspect" type="button" aria-expanded="false"></button>
-          <button id="remove" type="button" aria-label="資料を外す">×</button>
-        </div>
-        <pre id="attachment-preview" hidden></pre>
-        <div class="compose">
-          <details id="capture">
-            <summary aria-label="タブの資料を追加">＋</summary>
-            <div class="popup">
-              <button id="capture-selection" type="button">現在のタブと選択した文章</button>
-              <button id="capture-viewport" type="button">表示領域のテキストを含める</button>
-            </div>
-          </details>
-          <label class="sr-only" for="prompt">メッセージ</label>
-          <textarea id="prompt" rows="1" maxlength="20000" placeholder="このページについて質問"></textarea>
-          <button id="send" type="submit" disabled>送信</button>
-          <button id="stop" type="button" hidden>停止</button>
-        </div>
-      </form>
-    </footer>
+    <section id="page-context" aria-labelledby="context-title">
+      <h2 id="context-title">このページの資料</h2>
+      <div class="remote-actions">
+        <button id="capture-selection" type="button">タブと選択テキスト</button>
+        <button id="capture-viewport" type="button">表示領域も含める</button>
+      </div>
+      <textarea id="attachment-preview" aria-label="コピーする資料" rows="6" hidden></textarea>
+      <button id="copy-context" type="button" hidden>資料をコピー</button>
+      <p id="context-status" role="status"></p>
+    </section>
   </main>
 </body>
 </html>
