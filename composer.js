@@ -24,8 +24,6 @@
   let busy = false;
   let status;
   let statusTimer;
-  let pageButton;
-  let buttonEditor;
   let lastEditorCounts;
   const unverifiedDrafts = new WeakMap();
 
@@ -240,70 +238,13 @@
     return chrome.runtime.sendMessage({ type: 'agy-context', action, format, source, sourceKey });
   }
 
-  function updatePageButton() {
+  function updateEditorObservation() {
     const inspected = visibleEditors();
-    const candidates = inspected.filter(isMessageEditor);
-    const editor = candidates.length === 1 ? candidates[0] : null;
-    const editorCounts = { visible: inspected.length, matched: candidates.length };
+    const editorCounts = { visible: inspected.length, matched: inspected.filter(isMessageEditor).length };
     const signature = editorCounts.visible + '/' + editorCounts.matched;
-    if (signature !== lastEditorCounts) {
-      lastEditorCounts = signature;
-      if (!editor) observe('no-editor', editorCounts);
-    }
-    if (editor === buttonEditor && pageButton?.isConnected) return;
-    pageButton?.remove();
-    pageButton = null;
-    buttonEditor = editor;
-    if (!editor) return;
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = 'このページを下書きに追加';
-    button.title = '現在の Chrome タブのタイトル、URL、本文を下書きに追加';
-    Object.assign(button.style, {
-      display: 'block', margin: '4px 8px 2px', padding: '4px 9px',
-      background: 'Canvas', color: 'CanvasText', border: '1px solid GrayText',
-      borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
-    });
-    button.addEventListener('click', event => {
-      if (!event.isTrusted) return;
-      event.stopPropagation();
-      if (!busy) void insertCurrentPage(editor, button);
-    });
-    editor.before(button);
-    pageButton = button;
-    observe(visible(button) ? 'button-ready' : 'button-hidden', editorCounts);
-  }
-
-  async function insertCurrentPage(editor, button) {
-    observe('capture-start');
-    busy = true;
-    button.disabled = true;
-    button.textContent = 'ページを取得中…';
-    const originalUrl = location.href;
-    try {
-      checkDraft(editor);
-      const route = await conversationRoute();
-      if (!document.hasFocus() || document.visibilityState !== 'visible' || conversationEditor() !== editor) {
-        throw new Error('公式サイドパネルの入力欄を開いて、もう一度選んでください。');
-      }
-      const context = await request('insert-active');
-      if (!context?.ok) throw new Error(context?.error || 'Chrome ページの資料を取得できませんでした。');
-      if (route !== await conversationRoute() || location.href !== originalUrl ||
-          conversationEditor() !== editor || document.visibilityState !== 'visible' || !document.hasFocus()) {
-        throw new Error('会話が切り替わりました。もう一度選んでください。');
-      }
-      insertDraft(editor, context.text);
-      report('現在のページを下書きに追加しました。');
-      observe('draft-added');
-    } catch (error) {
-      observe('failed');
-      report(error.message);
-    } finally {
-      busy = false;
-      button.disabled = false;
-      button.textContent = 'このページを下書きに追加';
-    }
+    if (signature === lastEditorCounts) return;
+    lastEditorCounts = signature;
+    observe(editorCounts.matched === 1 ? 'editor-ready' : 'no-editor', editorCounts);
   }
 
   async function runAction(menu, selected, operation, source, format) {
@@ -413,7 +354,7 @@
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      updatePageButton();
+      updateEditorObservation();
       void showActions();
     });
   }

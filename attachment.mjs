@@ -124,7 +124,7 @@ async function recordPanelObservation(message, sender) {
   const status = isPanelSender(sender)
     ? message.state
     : (sender.tab?.id != null && sender.tab.id !== -1 ? 'ordinary-tab' : 'rejected-origin');
-  if (!['connected', 'unexpected-frame', 'needs-permission', 'no-editor', 'button-ready', 'button-hidden',
+  if (!['connected', 'unexpected-frame', 'needs-permission', 'no-editor', 'editor-ready',
     'capture-start', 'draft-added', 'failed', 'ordinary-tab', 'rejected-origin'].includes(status)) return { ok: false };
   // This is deliberately limited to a status and timestamp, without page or conversation data.
   if (status !== 'ordinary-tab') {
@@ -147,7 +147,6 @@ async function handlePanelRequest(message, sender) {
   }
   if (message.action === 'available') return { ok: true };
   const { windowId, tab } = await focusedSource();
-  if (message.action === 'insert-active') return captureActiveMarkdown(windowId, tab);
   const staged = await getStaged(windowId);
   const now = Date.now();
 
@@ -206,7 +205,7 @@ async function captureActiveMarkdown(windowId, tab) {
     if (hasSiteGrant || /chrome-error|chromewebdata/i.test(error.message) ||
         !/cannot access contents of (the page|url)|host permission|must request permission/i.test(error.message)) throw error;
     await openSiteGrant(windowId, host);
-    throw new Error('初回だけ、設定タブでサイトを許可してください。元のページに戻るとボタン1回で追加できます。');
+    throw new Error('初回だけ、設定タブでサイトを許可してください。元のページに戻って Add context から選んでください。');
   }
   await assertSameSource();
   if (!context || !await chrome.permissions.contains(composerPermissions) ||

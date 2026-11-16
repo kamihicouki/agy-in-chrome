@@ -9,9 +9,21 @@ export function readArticleMarkdown() {
   if (!document.body || document.getElementsByTagName('*').length > 12000) return result;
 
   const clone = document.cloneNode(true);
-  const excluded = 'script, style, noscript, template, form, input, button, textarea, select, [contenteditable], [hidden], [aria-hidden="true"], iframe, object, embed, img, svg, video, audio, canvas, link, base, meta[http-equiv]';
+  const excluded = 'script, style, noscript, template, form, input, button, textarea, select, [contenteditable], [hidden], [aria-hidden="true"], iframe, object, embed, svg, video, audio, canvas, link, base, meta[http-equiv]';
   const srcElements = document.querySelectorAll('body *');
   const clonedElements = clone.querySelectorAll('body *');
+  function safeReference(value) {
+    if (!value) return null;
+    try {
+      const target = new URL(value, document.baseURI);
+      if (!['https:', 'http:'].includes(target.protocol) || target.username || target.password) return null;
+      target.search = target.hash = '';
+      return target.href;
+    } catch {
+      return null;
+    }
+  }
+
   const hidden = new Set();
   srcElements.forEach((element, index) => {
     const parentExcluded = hidden.has(element.parentElement);
@@ -22,27 +34,44 @@ export function readArticleMarkdown() {
       if (style.display === 'none' || style.visibility !== 'visible' || style.opacity === '0' ||
           style.contentVisibility === 'hidden') hidden.add(element);
     }
-    if (hidden.has(element) && !parentExcluded) clonedElements[index].remove();
+    if (hidden.has(element) && !parentExcluded) {
+      clonedElements[index].remove();
+    } else if (!hidden.has(element) && element instanceof HTMLImageElement) {
+      const source = safeReference(element.currentSrc || element.getAttribute('src'));
+      if (!source) {
+        clonedElements[index].remove();
+      } else {
+        const reference = clone.createElement('img');
+        reference.setAttribute('src', source);
+        reference.setAttribute('alt', element.alt);
+        clonedElements[index].replaceWith(reference);
+      }
+    }
   });
   clone.head?.querySelectorAll(excluded).forEach(element => element.remove());
 
   for (const link of clone.querySelectorAll('a[href]')) {
-    try {
-      const target = new URL(link.getAttribute('href'), document.baseURI);
-      if (target.protocol !== 'https:' && target.protocol !== 'http:') {
-        link.removeAttribute('href');
-        continue;
-      }
-      target.username = target.password = target.search = target.hash = '';
-      link.setAttribute('href', target.href);
-    } catch {
-      link.removeAttribute('href');
-    }
+    const target = safeReference(link.getAttribute('href'));
+    if (target) link.setAttribute('href', target);
+    else link.removeAttribute('href');
   }
 
   const article = new Readability(clone, { serializer: element => element }).parse();
   if (!article?.content || article.length < 120) return result;
   const converter = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+  // Keep a citation the agent can open without embedding or fetching image bytes.
+  const seenImages = new Set();
+  converter.addRule('imageReferences', {
+    filter: 'img',
+    replacement(_content, node) {
+      const url = safeReference(node.getAttribute('src'));
+      if (!url || seenImages.has(url) || seenImages.size >= 12) return '';
+      seenImages.add(url);
+      const alt = (node.getAttribute('alt') || '').replace(/[\[\]\\\r\n]+/g, ' ').trim().slice(0, 160);
+      const destination = url.replace(/[<>]/g, character => encodeURIComponent(character));
+      return '[画像: ' + (alt || '元画像') + '](<' + destination + '>)';
+    },
+  });
   return { ...result, markdown: converter.turndown(article.content).trim().slice(0, 16000) };
 }
 

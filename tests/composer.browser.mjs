@@ -49,7 +49,6 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
           if (req.action === 'list') return {
             ok: true, active: true, sourceKey: 'fixture', staged: true, stagedImage: true,
           };
-          if (req.action === 'insert-active') return { ok: true, text: '# One-click context' };
           if (req.sourceKey !== 'fixture') throw new Error('Source identity missing');
           if (document.body.dataset.reject === 'true') return { ok: false, error: '元のタブが切り替わりました。' };
           return req.format === 'image'
@@ -59,10 +58,8 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
     }, testPng);
     await page.goto(origin);
     await page.addScriptTag({ content: composerSource.replace('https://antigravity.google.com', origin) });
-    await page.getByRole('button', { name: 'このページを下書きに追加' }).click();
-    await page.getByRole('status').getByText('現在のページを下書きに追加しました。').waitFor();
-    assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き\n\n# One-click context');
-    await page.getByRole('textbox').fill('既存の下書き');
+    await page.waitForFunction(() => !document.querySelector('button[title*="現在の Chrome タブ"]'));
+    assert.equal(await page.getByRole('button', { name: 'このページを下書きに追加' }).count(), 0);
     await page.getByRole('button', { name: 'Add context' }).click();
     const draft = page.getByRole('menuitem', { name: '現在の Chrome ページを下書きに挿入' });
     await draft.evaluate(button => button.click());
@@ -76,13 +73,14 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
     await page.locator('body').evaluate(body => { body.dataset.reject = 'true'; });
     await draft.click();
     await page.getByRole('status').getByText('元のタブが切り替わりました。').waitFor();
+    await page.locator('body').evaluate(body => { delete body.dataset.reject; });
     assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き\n\n# Synthetic Markdown');
     assert.equal(await page.locator('body').getAttribute('data-sent'), null);
 
     await page.getByRole('textbox').evaluate(editor => {
       editor.addEventListener('input', () => { editor.value += '!'; }, { once: true });
     });
-    const shortcut = page.getByRole('button', { name: 'このページを下書きに追加' });
+    const shortcut = draft;
     await shortcut.click();
     await page.getByRole('status').getByText(/二重に追加しないよう/).waitFor();
     const unverified = await page.getByRole('textbox').inputValue();
@@ -100,9 +98,9 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
       editor.replaceWith(editable);
     });
     await shortcut.click();
-    await page.getByRole('status').getByText('現在のページを下書きに追加しました。').waitFor();
+    await page.getByRole('status').getByText('本文を下書きに挿入しました。').waitFor();
     const editableDraft = await page.getByRole('textbox').innerText();
-    assert.match(editableDraft, /^Existing editable draft[\s\S]*# One-click context$/);
+    assert.match(editableDraft, /^Existing editable draft[\s\S]*# Synthetic Markdown$/);
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));
@@ -115,7 +113,7 @@ test('Readability and Turndown extract Markdown without hidden or editable mater
     const page = await browser.newPage();
     await page.setContent(`<title>Public example</title><article>
       <h1>Article heading</h1><p>${'Public article material with enough words for extraction. '.repeat(12)}</p>
-      <p><strong>Formatting retained</strong> <a href="https://example.com/page?secret=hidden#token">Example link</a></p>
+      <p><img src="https://example.com/diagram.png?token=secret" alt="Article diagram"><strong>Formatting retained</strong> <a href="https://example.com/page?secret=hidden#token">Example link</a></p>
       <div style="display:none">hidden-fixture</div><div contenteditable="true">editor-fixture</div>
       </article>`);
     await page.addScriptTag({ path: new URL('../vendor/readability.js', import.meta.url).pathname });
@@ -123,7 +121,8 @@ test('Readability and Turndown extract Markdown without hidden or editable mater
     const result = await page.evaluate(readArticleMarkdown);
     assert.match(result.markdown, /\*\*Formatting retained\*\*/);
     assert.match(result.markdown, /\[Example link\]\(https:\/\/example.com\/page\)/);
-    assert.doesNotMatch(result.markdown, /secret=|#token|hidden-fixture|editor-fixture/);
+    assert.match(result.markdown, /\[画像: Article diagram\]\(<https:\/\/example.com\/diagram.png>\)/);
+    assert.doesNotMatch(result.markdown, /!\[|token=|secret=|#token|hidden-fixture|editor-fixture/);
   } finally {
     await browser.close();
   }

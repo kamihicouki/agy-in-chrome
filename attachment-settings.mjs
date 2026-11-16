@@ -12,8 +12,7 @@ const diagnosticLabels = {
   'unexpected-frame': '対象外のフレーム構成',
   'needs-permission': 'Chrome の許可が必要',
   'no-editor': '会話の入力欄を検出できません',
-  'button-ready': '追加ボタンを表示',
-  'button-hidden': '追加ボタンを作成しましたが画面上では非表示',
+  'editor-ready': '会話の入力欄を検出',
   'capture-start': '取得を開始',
   'draft-added': '直近の下書き追加を確認',
   failed: '直近の操作が失敗。パネル内の案内を確認',
@@ -76,7 +75,7 @@ async function configure() {
       }
       if (grant) {
         await chrome.storage.session.remove(key);
-        status.textContent = '許可しました。このタブを閉じて元のページに戻って、公式パネルのボタンを押してください。';
+        status.textContent = '許可しました。このタブを閉じて元のページに戻って、公式パネルの Add context から選んでください。';
       } else {
         if (!await registerComposer()) throw new Error('Composer registration was not granted');
         await showDiagnostics();

@@ -17,7 +17,7 @@ async function waitFor(read, name, attempts = 40) {
   throw new Error('Timed out waiting for ' + name);
 }
 
-test('one click in a native cross-origin side panel inserts the active tab context', async () => {
+test('Add context in a native cross-origin side panel inserts the active tab context', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agy-native-panel-'));
   const extender = join(directory, 'extension');
   const server = createServer((request, response) => {
@@ -29,6 +29,8 @@ test('one click in a native cross-origin side panel inserts the active tab conte
     } else if (request.url === '/renderer') {
       response.end(`<style>body{margin:0}textarea{display:block;width:96%;height:80px}</style>
         <textarea aria-label="Message input">Original draft</textarea>
+        <button aria-label="Add context" onclick="document.querySelector('[role=menu]').hidden=false">Add context</button>
+        <div role="menu" hidden><button>Files</button><button>Browser</button></div>
         <script>document.querySelector('textarea').addEventListener('input',e=>parent.postMessage({draft:e.target.value}, '*'));</script>`);
     } else {
       response.writeHead(404).end();
@@ -89,20 +91,24 @@ test('one click in a native cross-origin side panel inserts the active tab conte
     await source.goto('http://127.0.0.1:' + sourceServer.address().port + '/source');
     await source.bringToFront();
 
-    const point = await waitFor(() => innerClient.eval(`(() => {
-      const button = [...document.querySelectorAll('button')].find(node => node.textContent === 'このページを下書きに追加');
-      const rect = button?.getBoundingClientRect();
-      return rect && {x:rect.x + rect.width / 2,y:rect.y + rect.height / 2};
-    })()`), 'injected button');
-    for (const type of ['mousePressed', 'mouseReleased']) {
-      await outerClient.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
-    }
+    const click = async name => {
+      const point = await waitFor(() => innerClient.eval(`(() => {
+        const button = [...document.querySelectorAll('button')].find(node => node.textContent === ${JSON.stringify(name)});
+        const rect = button?.getBoundingClientRect();
+        return rect?.width && {x:rect.x + rect.width / 2,y:rect.y + rect.height / 2};
+      })()`), name);
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await outerClient.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+      }
+    };
+    await click('Add context');
+    await click('現在の Chrome ページを下書きに挿入');
     const result = await waitFor(async () => {
       const observed = await innerClient.eval(`({status:document.querySelector('[role=status]')?.textContent,draft:document.querySelector('textarea').value})`);
       return observed.status && observed;
     }, 'insertion outcome');
     assert.match(result.draft, /^Original draft\n\n[\s\S]*Native fixture source[\s\S]*An article from the active Chrome tab/, result.status);
-    assert.equal(result.status, '現在のページを下書きに追加しました。');
+    assert.equal(result.status, '本文を下書きに挿入しました。');
   } finally {
     await browser?.close();
     await Promise.all([server, sourceServer].map(activeServer => new Promise(resolve => activeServer.close(resolve))));

@@ -67,31 +67,34 @@ test('attachment requests are scoped to the panel document, window and current s
       send({ action: 'take', sourceKey, source, format }, from);
 
     assert.equal((await send({ action: 'list' }, { ...sender, tab: { id: 7 } })).ok, false);
-    await send({ action: 'observe', state: 'button-ready' });
+    await send({ action: 'observe', state: 'editor-ready' });
     const footprint = saved['agy-attachment-observation-outer'];
-    assert.equal(footprint.status, 'button-ready');
+    assert.equal(footprint.status, 'editor-ready');
     assert.deepEqual(Object.keys(footprint).sort(), ['at', 'status']);
     windowFocused = false;
     normalWindows = [5, 6];
-    assert.equal((await send({ action: 'insert-active' })).ok, false);
+    assert.equal((await send({ action: 'list' })).ok, false);
     normalWindows = [5];
 
     let { sourceKey } = await send({ action: 'list' });
     assert.equal((await take(sourceKey)).ok, false);
     assert.match(permissionPage.url, /attachment-settings\.html\?window=5&grant=/);
     activeTabGrant = true;
-    const oneTouch = await send({ action: 'insert-active' });
+    ({ sourceKey } = await send({ action: 'list' }));
+    const oneTouch = await take(sourceKey);
     assert.match(oneTouch.text, /\*\*Article body\*\*/);
     activeTabGrant = false;
     windowFocused = true;
     permissionPage = undefined;
     captureError = 'Renderer unavailable';
-    assert.equal((await send({ action: 'insert-active' })).ok, false);
+    ({ sourceKey } = await send({ action: 'list' }));
+    assert.equal((await take(sourceKey)).ok, false);
     assert.equal(permissionPage, undefined);
     captureError = undefined;
     permission = true;
     changeSourceOnCapture = true;
-    assert.equal((await send({ action: 'insert-active' })).ok, false);
+    ({ sourceKey } = await send({ action: 'list' }));
+    assert.equal((await take(sourceKey)).ok, false);
     changeSourceOnCapture = false;
 
     ({ sourceKey } = await send({ action: 'list' }));
