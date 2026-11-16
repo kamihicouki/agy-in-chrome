@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Antigravity Remote Sidebar",
+  "description": "Open the official Antigravity web app beside the current tab.",
+  "version": "0.2.0",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "sidePanel"
+  ],
+  "action": {
+    "default_title": "Antigravity Remote Sidebar"
+  },
+  "background": {
+    "service_worker": "background.mjs",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  }
+}
