@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "agy in chrome",
-  "description": "Open Antigravity from Chrome and prepare context from your current tab.",
-  "version": "0.3.1",
+  "description": "Talk to Antigravity in the Chrome side panel with context from the current tab.",
+  "version": "0.4.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",
-    "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "nativeMessaging"
   ],
   "action": {
     "default_title": "agy in chrome"

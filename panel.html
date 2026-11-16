@@ -9,22 +9,44 @@
 </head>
 <body>
   <main>
-    <h1>agy in chrome</h1>
-    <label for="mode">公式画面の開き方</label>
-    <select id="mode">
-      <option value="split">分割表示</option>
-      <option value="tab">別タブ</option>
-      <option value="window">別ウィンドウ</option>
-    </select>
-
-    <h2>現在のタブを共有</h2>
-    <label><input id="viewport" type="checkbox"> 表示領域のテキストも含める</label>
-    <button id="capture" type="button">タブの情報を取得</button>
-    <label for="preview">コピーする内容</label>
-    <textarea id="preview" rows="8" disabled></textarea>
-    <button id="copy" type="button" disabled>コピーして開く</button>
-    <button id="open" type="button">公式画面を開く</button>
-    <p id="status" role="status"></p>
+    <header>
+      <button id="sessions" type="button" aria-expanded="false">会話</button>
+      <h1 id="title">agy in chrome</h1>
+      <details id="options">
+        <summary aria-label="表示オプション">⋯</summary>
+        <div class="popup">
+          <button id="split" type="button">公式画面を分割表示</button>
+          <button id="tab" type="button">公式画面を別タブで開く</button>
+          <button id="window" type="button">公式画面を別ウィンドウで開く</button>
+        </div>
+      </details>
+    </header>
+    <nav id="session-list" aria-label="会話一覧" hidden></nav>
+    <section id="thread" role="log" aria-label="会話"></section>
+    <footer>
+      <p id="status" role="status">ローカルの Antigravity CLI に接続すると会話を始められます。</p>
+      <button id="connect" type="button">Antigravity に接続</button>
+      <form id="composer" aria-label="メッセージ作成">
+        <div id="attachment" hidden>
+          <button id="inspect" type="button" aria-expanded="false"></button>
+          <button id="remove" type="button" aria-label="資料を外す">×</button>
+        </div>
+        <pre id="attachment-preview" hidden></pre>
+        <div class="compose">
+          <details id="capture">
+            <summary aria-label="タブの資料を追加">＋</summary>
+            <div class="popup">
+              <button id="capture-selection" type="button">現在のタブと選択した文章</button>
+              <button id="capture-viewport" type="button">表示領域のテキストを含める</button>
+            </div>
+          </details>
+          <label class="sr-only" for="prompt">メッセージ</label>
+          <textarea id="prompt" rows="1" maxlength="20000" placeholder="このページについて質問"></textarea>
+          <button id="send" type="submit" disabled>送信</button>
+          <button id="stop" type="button" hidden>停止</button>
+        </div>
+      </form>
+    </footer>
   </main>
 </body>
 </html>

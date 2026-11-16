@@ -1,27 +1,50 @@
 :root {
   color-scheme: light dark;
-  font: 14px/1.55 system-ui, sans-serif;
+  font: 14px/1.55 system-ui, "Hiragino Sans", sans-serif;
+  --bg: #fff; --text: #162132; --quiet: #53617a; --line: #e1e6ee;
+  --agy: #eef1f5; --human: #e3ebfd; --action: #315fba; --on-action: #fff;
 }
-
-main {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 12px;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171b23; --text: #ebeff7; --quiet: #b2bfd1; --line: #394152;
+    --agy: #282f3b; --human: #273b5e; --action: #afc6ff; --on-action: #182841;
+  }
 }
-
-h1, h2 { margin: 0; }
-h1 { font-size: 1.25rem; }
-h2 { font-size: 1rem; margin-block-start: 8px; }
-
-button, select {
-  min-block-size: 36px;
-}
-
-textarea {
-  font: inherit;
-  min-inline-size: 0;
-  resize: vertical;
-}
-
-#status { margin: 0; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+main { height: 100dvh; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+button, textarea, summary { font: inherit; color: inherit; }
+button, summary { cursor: pointer; }
+button { border: 0; background: var(--agy); border-radius: 9px; padding: 7px 10px; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, summary:focus-visible, textarea:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+h1 { margin: 0; flex: 1; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+details { position: relative; }
+summary { display: grid; place-items: center; list-style: none; min-width: 34px; min-height: 34px; border-radius: 9px; }
+summary::-webkit-details-marker { display: none; }
+summary:hover { background: var(--agy); }
+.popup { position: absolute; right: 0; z-index: 2; background: var(--bg); min-width: 180px; border: 1px solid var(--line); border-radius: 10px; padding: 4px; display: grid; gap: 3px; }
+.popup button { text-align: left; }
+#session-list { grid-row: 2; display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 12px; border-bottom: 1px solid var(--line); max-height: 32vh; overflow: auto; }
+#session-list button[aria-current] { background: var(--human); }
+#thread { grid-row: 3; padding: 20px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+.message { --bubble: var(--agy); background: var(--bubble); position: relative; max-width: 82%; align-self: flex-start; border-radius: 12px; padding: 8px 11px; white-space: pre-wrap; overflow-wrap: anywhere; margin-left: 5px; }
+.message.user { --bubble: var(--human); max-width: 73%; align-self: flex-end; margin: 0 5px 0 0; }
+.message::before { content: ''; position: absolute; left: -4px; top: 12px; width: 9px; height: 9px; transform: rotate(45deg); background: var(--bubble); }
+.message.user::before { left: auto; right: -4px; }
+.message p { margin: 0; }
+.source { display: block; font-size: 12px; color: var(--quiet); margin-bottom: 4px; }
+footer { grid-row: 4; padding: 7px 9px 10px; }
+#status { color: var(--quiet); margin: 0 4px 6px; font-size: 12px; overflow-wrap: anywhere; }
+#connect { margin: 0 0 6px; }
+form { border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
+.compose { display: flex; align-items: center; gap: 8px; }
+#capture .popup { right: auto; left: 0; bottom: calc(100% + 5px); width: max-content; }
+textarea { resize: none; field-sizing: content; max-height: 120px; min-height: 34px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 6px 2px; }
+#send { background: var(--action); color: var(--on-action); }
+#attachment { display: inline-flex; gap: 2px; max-width: 100%; border-radius: 999px; background: var(--human); margin: 0 0 6px; }
+#attachment button { background: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#attachment-preview { border: 1px solid var(--line); border-radius: 8px; max-height: 25vh; overflow: auto; margin: 0 0 6px; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 system-ui, sans-serif; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

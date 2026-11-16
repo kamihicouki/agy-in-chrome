@@ -1,20 +1,26 @@
 # agy in chrome
 
-読み方は「antigravity in chrome」です。
+読み方は「antigravity in chrome」です。Chrome のサイドパネルでローカルの Antigravity CLI と会話し、開いているタブを資料に添えられる非公式拡張です。
 
-Chrome のサイドパネルから公式 Antigravity を開き、閲覧中のタブの文脈を共有できる非公式の拡張です。公式画面の開き方は分割表示、別タブ、別ウィンドウから選べます。
+## セットアップ
 
-1. 共有元のページで拡張アイコンを押します。
-2. 「タブの情報を取得」でタイトル、URL、選択テキストをプレビューします。表示領域のテキストも必要なら、チェックを入れて取得します。
-3. 内容を確認し、「コピーして開く」を押して、公式画面の入力欄に貼り付けます。
+macOS または Linux の Google Chrome、Node.js、Python 3、Antigravity CLI が必要です。Antigravity CLI でログインしてから、ソースを使って中継を登録します。[公式 ACP 手順](https://antigravity.google/docs/cli/acp)
 
-分割表示は Chrome 155 以降です。分割できない場合は別ウィンドウまたは別タブで開きます。
+1. `python3 scripts/package.py` で ZIP を作り、展開したフォルダを Chrome の拡張機能管理画面から読み込みます。
+2. 拡張 ID をコピーし、このリポジトリのソースディレクトリで次を実行します。
 
-- **Remote Conversations** は Google が管理する環境で実行する会話です。[Remote Agents 公式ガイド](https://antigravity.google/docs/remote-agents/)
-- **Remote Control Instances** は接続済みの Antigravity App または CLI が動くマシンです。CLI は会話を直接開くリンクも出力します。[Remote Control 公式ガイド](https://antigravity.google/docs/remote-control/)
+   ```sh
+   python3 scripts/install-native.py EXTENSION_ID
+   ```
 
-公式サイトの公開 Web App Manifest は `start_url: "/"`、`display: "standalone"` です。[公開マニフェスト](https://antigravity.google.com/assets/manifest.json)
+3. 共有元のページで拡張アイコンを押し、サイドパネルで「Antigravity に接続」を選びます。
 
-0.1.x の iframe 試作では、ログイン済みの Chrome でも Google が 403 を返す例を確認しました。0.2.0 は Chrome の Split View を使い、公式サイトを通常のタブとして開きます。[Split View API](https://developer.chrome.com/blog/split-view-api-extensions)
+登録スクリプトは、この拡張 ID だけを許可し、専用作業フォルダ `~/.agy-in-chrome/workspace` で `agy acp --sandbox --disable-telemetry` を起動する中継を登録します。作業単位のフォルダは `--workspace /absolute/path/to/workspace` で選べます。CLI の既存設定で許可済みの操作は、承認なしで実行される場合があります。Chrome for Testing は `--chrome-for-testing`、カスタムユーザーデータディレクトリは `--user-data-dir` を指定できます。ソースを移動した場合は登録をやり直してください。
 
-配布 ZIP は [GitHub Releases](https://github.com/kamihicouki/agy-in-chrome/releases) にあります。Chrome Web Store の初回申請と自動更新の設定は [公開手順](docs/store-release.md) を参照してください。
+## 使い方
+
+「＋」から現在のタブと選択した文章、または表示領域のテキストを添付できます。チップを押して送る内容を確認し、不要なら外せます。送信すると、資料はプロンプト内の引用として CLI に渡ります。実行中は「停止」で中止を要求できます。
+
+会話の一覧と下書きはパネルを開いている間に保持します。ローカル CLI に承認が必要な操作を求められた場合、この版は拒否して通知します。CLI の既存会話の再開や、公式 Web の Remote Agents／Remote Control セッションの同期は未対応です。公式 Web 画面はオプションから分割表示、別タブ、別ウィンドウで開けます。
+
+配布版と公開手順は [GitHub Releases](https://github.com/kamihicouki/agy-in-chrome/releases) と [Chrome Web Store 公開手順](docs/store-release.md) を参照してください。
