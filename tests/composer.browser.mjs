@@ -49,6 +49,7 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
           if (req.action === 'list') return {
             ok: true, active: true, sourceKey: 'fixture', staged: true, stagedImage: true,
           };
+          if (req.action === 'insert-active') return { ok: true, text: '# One-click context' };
           if (req.sourceKey !== 'fixture') throw new Error('Source identity missing');
           if (document.body.dataset.reject === 'true') return { ok: false, error: '元のタブが切り替わりました。' };
           return req.format === 'image'
@@ -58,6 +59,10 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
     }, testPng);
     await page.goto(origin);
     await page.addScriptTag({ content: composerSource.replace('https://antigravity.google.com', origin) });
+    await page.getByRole('button', { name: 'このページを下書きに追加' }).click();
+    await page.getByRole('status').getByText('現在のページを下書きに追加しました。').waitFor();
+    assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き\n\n# One-click context');
+    await page.getByRole('textbox').fill('既存の下書き');
     await page.getByRole('button', { name: 'Add context' }).click();
     const draft = page.getByRole('menuitem', { name: '現在の Chrome ページを下書きに挿入' });
     await draft.evaluate(button => button.click());
@@ -73,6 +78,31 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
     await page.getByRole('status').getByText('元のタブが切り替わりました。').waitFor();
     assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き\n\n# Synthetic Markdown');
     assert.equal(await page.locator('body').getAttribute('data-sent'), null);
+
+    await page.getByRole('textbox').evaluate(editor => {
+      editor.addEventListener('input', () => { editor.value += '!'; }, { once: true });
+    });
+    const shortcut = page.getByRole('button', { name: 'このページを下書きに追加' });
+    await shortcut.click();
+    await page.getByRole('status').getByText(/二重に追加しないよう/).waitFor();
+    const unverified = await page.getByRole('textbox').inputValue();
+    await shortcut.click();
+    await page.getByRole('status').getByText(/前回の追加結果が未確認/).waitFor();
+    assert.equal(await page.getByRole('textbox').inputValue(), unverified);
+
+    await page.getByRole('textbox').evaluate(editor => {
+      const editable = document.createElement('div');
+      editable.setAttribute('contenteditable', 'true');
+      editable.setAttribute('role', 'textbox');
+      editable.setAttribute('aria-label', 'メッセージ入力');
+      editable.style.minHeight = '40px';
+      editable.textContent = 'Existing editable draft';
+      editor.replaceWith(editable);
+    });
+    await shortcut.click();
+    await page.getByRole('status').getByText('現在のページを下書きに追加しました。').waitFor();
+    const editableDraft = await page.getByRole('textbox').innerText();
+    assert.match(editableDraft, /^Existing editable draft[\s\S]*# One-click context$/);
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

@@ -31,7 +31,7 @@ async function configure() {
       }
       if (grant) {
         await chrome.storage.session.remove(key);
-        status.textContent = '許可しました。このタブを閉じて元のページに戻り、Add context を開き直してください。';
+        status.textContent = '許可しました。このタブを閉じて元のページに戻って、公式パネルのボタンを押してください。';
       } else {
         await registerComposer();
         status.textContent = '有効になりました。拡張の「接続先・資料プレビュー」を一度開き、公式サイドパネルに戻ると反映されます。';

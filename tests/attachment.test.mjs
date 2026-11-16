@@ -8,6 +8,9 @@ test('attachment requests are scoped to the panel document, window and current s
   let active = { id: 1, windowId, url: 'https://example.com/page?private=1', title: 'Fixture', active: true };
   let permission = false;
   let enabled = true;
+  let activeTabGrant = false;
+  let captureError;
+  let changeSourceOnCapture = false;
   let permissionPage;
   const saved = {};
   const changes = new Set();
@@ -42,9 +45,14 @@ test('attachment requests are scoped to the panel document, window and current s
       remove: async key => { delete saved[key]; },
     } },
     permissions: { contains: async options => options.permissions ? enabled : permission },
-    scripting: { executeScript: async ({ files }) => files
-      ? [{ documentId: 'source-1' }]
-      : [{ result: { title: 'Fixture', url: active.url, markdown: '**Article body**' } }] },
+    scripting: { executeScript: async ({ files }) => {
+      if (captureError) throw new Error(captureError);
+      if (!permission && !activeTabGrant) throw new Error('Cannot access contents of the page');
+      if (files) return [{ documentId: 'source-1' }];
+      const result = { title: 'Fixture', url: active.url, markdown: '**Article body**' };
+      if (changeSourceOnCapture) active = { ...active, id: active.id + 1 };
+      return [{ result }];
+    } },
   };
   try {
     installAttachmentMessaging();
@@ -59,10 +67,22 @@ test('attachment requests are scoped to the panel document, window and current s
     let { sourceKey } = await send({ action: 'list' });
     assert.equal((await take(sourceKey)).ok, false);
     assert.match(permissionPage.url, /attachment-settings\.html\?window=5&grant=/);
+    activeTabGrant = true;
+    const oneTouch = await send({ action: 'insert-active' });
+    assert.match(oneTouch.text, /\*\*Article body\*\*/);
+    activeTabGrant = false;
+    permissionPage = undefined;
+    captureError = 'Renderer unavailable';
+    assert.equal((await send({ action: 'insert-active' })).ok, false);
+    assert.equal(permissionPage, undefined);
+    captureError = undefined;
     permission = true;
+    changeSourceOnCapture = true;
+    assert.equal((await send({ action: 'insert-active' })).ok, false);
+    changeSourceOnCapture = false;
 
     ({ sourceKey } = await send({ action: 'list' }));
-    active = { ...active, id: 2 };
+    active = { ...active, id: active.id + 1 };
     assert.equal((await take(sourceKey)).ok, false);
     ({ sourceKey } = await send({ action: 'list' }));
     assert.equal((await take(sourceKey, 'active', 'markdown', { ...sender, documentId: 'panel-2' })).ok, false);

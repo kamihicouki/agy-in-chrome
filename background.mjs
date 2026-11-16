@@ -95,6 +95,11 @@ chrome.contextMenus.onClicked.addListener(async ({ menuItemId }, tab) => {
   }
 });
 
+async function initializeRemotePanel() {
+  await registerComposer().catch(console.error);
+  await configureRemotePanel();
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll().then(() => {
     chrome.contextMenus.create({ id: contextMenuId, title: '接続先・資料プレビュー', contexts: ['action'] });
@@ -122,11 +127,11 @@ chrome.runtime.onInstalled.addListener(() => {
     });
   }).catch(console.error);
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
-  configureRemotePanel().catch(console.error);
+  initializeRemotePanel().catch(console.error);
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  configureRemotePanel().catch(console.error);
+  initializeRemotePanel().catch(console.error);
 });
 
 chrome.permissions.onRemoved.addListener(() => { registerComposer().catch(console.error); });

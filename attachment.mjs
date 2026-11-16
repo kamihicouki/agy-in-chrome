@@ -21,19 +21,21 @@ export function sourceHost(value) {
 }
 
 export async function registerComposer() {
-  const id = 'agy-context-composer';
-  const [existing] = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
-  if (!await chrome.permissions.contains(composerPermissions)) {
-    if (existing) await chrome.scripting.unregisterContentScripts({ ids: [id] });
-    return false;
-  }
-  if (!existing) {
-    await chrome.scripting.registerContentScripts([{
-      id, matches: officialHosts, js: ['composer.js'], allFrames: true,
-      runAt: 'document_idle', persistAcrossSessions: true,
-    }]);
-  }
-  return true;
+  return navigator.locks.request('agy-composer-registration', async () => {
+    const id = 'agy-context-composer';
+    const [existing] = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
+    if (!await chrome.permissions.contains(composerPermissions)) {
+      if (existing) await chrome.scripting.unregisterContentScripts({ ids: [id] });
+      return false;
+    }
+    if (!existing) {
+      await chrome.scripting.registerContentScripts([{
+        id, matches: officialHosts, js: ['composer.js'], allFrames: true,
+        runAt: 'document_idle', persistAcrossSessions: true,
+      }]);
+    }
+    return true;
+  });
 }
 
 function isPanelSender(sender) {
@@ -112,6 +114,7 @@ async function handlePanelRequest(message, sender) {
   }
   if (message.action === 'available') return { ok: true };
   const { windowId, tab } = await focusedSource();
+  if (message.action === 'insert-active') return captureActiveMarkdown(windowId, tab);
   const staged = await getStaged(windowId);
   const now = Date.now();
 
@@ -147,21 +150,54 @@ async function handlePanelRequest(message, sender) {
     return { ok: true, text: staged.text, dataUrl: staged.dataUrl, name: staged.name };
   }
 
+  if (message.format !== 'markdown') throw new Error('この操作では本文を取得できます。');
+  return captureActiveMarkdown(windowId, tab);
+}
+
+async function captureActiveMarkdown(windowId, tab) {
   const host = sourceHost(tab?.url);
-  if (!host || tab.id !== lease.tabId || tab.url !== lease.url || message.format !== 'markdown') {
-    throw new Error('元のタブが切り替わったか、添付対象外のページです。');
+  if (!host) throw new Error('このタブの本文は取得できません。閲覧中の Web ページを選んでください。');
+  const hasSiteGrant = await chrome.permissions.contains({ origins: [host] });
+  const assertSameSource = async () => {
+    const source = await focusedSource();
+    if (source.windowId !== windowId || source.tab?.id !== tab.id ||
+        source.tab.url !== tab.url) throw new Error('元のページが切り替わりました。');
+  };
+  await assertSameSource();
+  let context;
+  try {
+    // Chrome also authorizes this read when the toolbar gave this tab activeTab.
+    context = await captureMarkdown(chrome, tab);
+  } catch (error) {
+    await assertSameSource();
+    if (hasSiteGrant || /chrome-error|chromewebdata/i.test(error.message) ||
+        !/cannot access contents of (the page|url)|host permission|must request permission/i.test(error.message)) throw error;
+    await openSiteGrant(windowId, host);
+    throw new Error('初回だけ、設定タブでサイトを許可してください。元のページに戻るとボタン1回で追加できます。');
   }
-  if (!await chrome.permissions.contains({ origins: [host] })) {
-    const grant = crypto.randomUUID();
-    await chrome.storage.session.set({ ['agy-site-grant-' + windowId]: { grant, host, expires: now + leaseMs } });
-    await chrome.tabs.create({ windowId, url: chrome.runtime.getURL('attachment-settings.html') + '?window=' + windowId + '&grant=' + grant });
-    throw new Error('開いた設定タブでサイトを許可してから、Add context を開き直してください。');
+  await assertSameSource();
+  if (!context || !await chrome.permissions.contains(composerPermissions) ||
+      (hasSiteGrant && !await chrome.permissions.contains({ origins: [host] }))) {
+    throw new Error('読み取りの許可が取り消されました。');
   }
-  const context = await captureMarkdown(chrome, tab);
-  const finalSource = await focusedSource();
-  if (!context || finalSource.windowId !== windowId || finalSource.tab?.id !== tab.id ||
-      finalSource.tab.url !== tab.url) throw new Error('取得中に元のページが切り替わりました。');
   return { ok: true, text: context.text, name: 'antigravity-page-context.md' };
+}
+
+async function openSiteGrant(windowId, host) {
+  const key = 'agy-site-grant-' + windowId;
+  const base = chrome.runtime.getURL('attachment-settings.html') + '?window=' + windowId + '&grant=';
+  const { [key]: existing } = await chrome.storage.session.get(key);
+  if (existing?.tabId != null && existing.host === host && existing.expires > Date.now()) {
+    const tab = await chrome.tabs.get(existing.tabId).catch(() => null);
+    if (tab?.windowId === windowId && tab.url === base + existing.grant) {
+      await chrome.tabs.update(existing.tabId, { active: true });
+      return;
+    }
+  }
+  const grant = { grant: crypto.randomUUID(), host, expires: Date.now() + leaseMs };
+  await chrome.storage.session.set({ [key]: grant });
+  const tab = await chrome.tabs.create({ windowId, url: base + grant.grant });
+  await chrome.storage.session.set({ [key]: { ...grant, tabId: tab?.id } });
 }
 
 export function installAttachmentMessaging() {

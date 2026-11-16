@@ -17,6 +17,9 @@
   let busy = false;
   let status;
   let statusTimer;
+  let pageButton;
+  let buttonEditor;
+  const unverifiedDrafts = new WeakMap();
 
   function visible(element) {
     return element instanceof HTMLElement &&
@@ -78,7 +81,7 @@
   function conversationEditor() {
     const candidates = [...document.querySelectorAll(editorSelector)].filter(element =>
       visible(element) && !element.matches('[readonly], [disabled], [aria-disabled="true"]') &&
-      (label(element) === 'Message input' ||
+      (label(element) === 'Message input' || element.closest('[aria-label="Message input"], [aria-label="メッセージ入力"]') ||
         (element.getAttribute('placeholder') ?? element.getAttribute('data-placeholder') ?? '')
           .startsWith('Ask anything')));
     return candidates.length === 1 ? candidates[0] : null;
@@ -159,10 +162,21 @@
     throw new Error('公式画面で添付を確認できませんでした。会話欄をご確認ください。');
   }
 
+  function draftText(editor) {
+    return editor instanceof HTMLTextAreaElement ? editor.value : editor.innerText;
+  }
+
+  function checkDraft(editor) {
+    if (unverifiedDrafts.get(editor) === draftText(editor)) {
+      throw new Error('前回の追加結果が未確認です。下書きを確認して編集してから再実行してください。');
+    }
+  }
+
   function insertDraft(editor, text) {
     if (typeof text !== 'string' || !text.trim()) throw new Error('挿入する本文がありません。');
     const textarea = editor instanceof HTMLTextAreaElement;
-    const previous = textarea ? editor.value : editor.innerText;
+    checkDraft(editor);
+    const previous = draftText(editor);
     const normalizedText = text.replace(/\r\n?/g, '\n');
     const addition = previous.trim() ? '\n\n' + normalizedText : normalizedText;
     editor.focus({ preventScroll: true });
@@ -177,11 +191,15 @@
       selection.addRange(range);
     }
     document.execCommand('insertText', false, addition);
-    const updated = textarea ? editor.value : editor.innerText;
+    const updated = draftText(editor);
     if (textarea ? updated !== previous + addition :
       (previous.trim() && !updated.startsWith(previous.trimEnd())) ||
         !updated.trimEnd().endsWith(normalizedText.trimEnd())) {
-      throw new Error('下書きへの挿入結果を確認できませんでした。会話欄をご確認ください。');
+      if (updated !== previous) {
+        unverifiedDrafts.set(editor, updated);
+        throw new Error('下書きが変わりました。二重に追加しないよう、挿入結果を確認してください。');
+      }
+      throw new Error('下書きに追加できませんでした。');
     }
   }
 
@@ -203,6 +221,57 @@
 
   function request(action, format, source, sourceKey) {
     return chrome.runtime.sendMessage({ type: 'agy-context', action, format, source, sourceKey });
+  }
+
+  function updatePageButton() {
+    const editor = conversationEditor();
+    if (editor === buttonEditor && pageButton?.isConnected) return;
+    pageButton?.remove();
+    pageButton = null;
+    buttonEditor = editor;
+    if (!editor) return;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'このページを下書きに追加';
+    button.title = '現在の Chrome タブのタイトル、URL、本文を下書きに追加';
+    Object.assign(button.style, {
+      display: 'block', margin: '4px 8px 2px', padding: '4px 9px',
+      background: 'Canvas', color: 'CanvasText', border: '1px solid GrayText',
+      borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+    });
+    button.addEventListener('click', event => {
+      if (!event.isTrusted) return;
+      event.stopPropagation();
+      if (!busy) void insertCurrentPage(editor, button);
+    });
+    editor.before(button);
+    pageButton = button;
+  }
+
+  async function insertCurrentPage(editor, button) {
+    busy = true;
+    button.disabled = true;
+    button.textContent = 'ページを取得中…';
+    const originalUrl = location.href;
+    try {
+      checkDraft(editor);
+      const route = await conversationRoute();
+      const context = await request('insert-active');
+      if (!context?.ok) throw new Error(context?.error || 'Chrome ページの資料を取得できませんでした。');
+      if (route !== await conversationRoute() || location.href !== originalUrl ||
+          conversationEditor() !== editor || document.visibilityState !== 'visible' || !document.hasFocus()) {
+        throw new Error('会話が切り替わりました。もう一度選んでください。');
+      }
+      insertDraft(editor, context.text);
+      report('現在のページを下書きに追加しました。');
+    } catch (error) {
+      report(error.message);
+    } finally {
+      busy = false;
+      button.disabled = false;
+      button.textContent = 'このページを下書きに追加';
+    }
   }
 
   async function runAction(menu, selected, operation, source, format) {
@@ -312,6 +381,7 @@
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
+      updatePageButton();
       void showActions();
     });
   }
