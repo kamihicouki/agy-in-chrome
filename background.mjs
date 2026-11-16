@@ -1,4 +1,4 @@
-import { attachmentSetupMenu, installAttachmentMessaging, registerComposer, stageContext, stageImageMenu, stageMarkdownMenu } from './attachment.mjs';
+import { attachmentObservationPrefix, attachmentSetupMenu, installAttachmentMessaging, registerComposer, stageContext, stageImageMenu, stageMarkdownMenu } from './attachment.mjs';
 import { captureTabContext, downloadContextFile } from './context.mjs';
 import { dashboard, normalizeRemoteLink, remoteLinkKey } from './remote.mjs';
 
@@ -67,7 +67,7 @@ chrome.contextMenus.onClicked.addListener(async ({ menuItemId }, tab) => {
       await navigator.locks.request('agy-stage-' + tab.windowId, () =>
         stageContext(tab, menuItemId === stageImageMenu ? 'image' : 'markdown'));
       await chrome.action.setBadgeText({ tabId: tab.id, text: '＋' });
-      await chrome.action.setTitle({ tabId: tab.id, title: '資料を用意しました。公式パネルの Add context から選んでください。' });
+      await chrome.action.setTitle({ tabId: tab.id, title: '資料を用意しました。下書きへの追加はまだ行われていません。' });
     } catch (error) {
       await Promise.allSettled([
         chrome.action.setBadgeText({ tabId: tab.id, text: '!' }),
@@ -101,9 +101,10 @@ async function initializeRemotePanel() {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.session.remove(['outer', 'renderer'].map(frame => attachmentObservationPrefix + frame)).catch(console.error);
   chrome.contextMenus.removeAll().then(() => {
     chrome.contextMenus.create({ id: contextMenuId, title: '接続先・資料プレビュー', contexts: ['action'] });
-    chrome.contextMenus.create({ id: attachmentSetupMenu, title: '公式 Add context の添付を有効にする', contexts: ['action'] });
+    chrome.contextMenus.create({ id: attachmentSetupMenu, title: 'ワンタッチ連携の設定・診断', contexts: ['action'] });
     const documentUrlPatterns = ['http://*/*', 'https://*/*'];
     chrome.contextMenus.create({
       id: stageMarkdownMenu, title: 'Antigravity にページ本文を渡す',

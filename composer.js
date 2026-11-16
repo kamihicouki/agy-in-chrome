@@ -5,10 +5,17 @@
   const officialPage = location.origin === officialOrigin && window === window.top;
   const officialFrame = location.origin === rendererOrigin &&
     ancestors?.length === 1 && ancestors[0] === officialOrigin;
-  if (!officialPage && !officialFrame) return;
+  function observe(state, editorCounts) {
+    void chrome.runtime.sendMessage({ type: 'agy-context', action: 'observe', state, editorCounts }).catch(() => {});
+  }
+  if (!officialPage && !officialFrame) {
+    observe('unexpected-frame');
+    return;
+  }
+
 
   const controlSelector = 'button, [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]';
-  const editorSelector = 'textarea, [contenteditable="true"], [contenteditable="plaintext-only"]';
+  const editorSelector = 'textarea, [contenteditable]';
   const menuSelector = '[role="menu"], [role="dialog"], [role="listbox"]';
   let pendingMenu;
   let menuGroup;
@@ -19,6 +26,7 @@
   let statusTimer;
   let pageButton;
   let buttonEditor;
+  let lastEditorCounts;
   const unverifiedDrafts = new WeakMap();
 
   function visible(element) {
@@ -78,12 +86,21 @@
     });
   }
 
-  function conversationEditor() {
-    const candidates = [...document.querySelectorAll(editorSelector)].filter(element =>
+  function visibleEditors() {
+    return [...document.querySelectorAll(editorSelector)].filter(element =>
       visible(element) && !element.matches('[readonly], [disabled], [aria-disabled="true"]') &&
-      (label(element) === 'Message input' || element.closest('[aria-label="Message input"], [aria-label="メッセージ入力"]') ||
-        (element.getAttribute('placeholder') ?? element.getAttribute('data-placeholder') ?? '')
-          .startsWith('Ask anything')));
+      (element instanceof HTMLTextAreaElement || element.isContentEditable));
+  }
+
+  function isMessageEditor(element) {
+    return Boolean(label(element) === 'Message input' ||
+      element.closest('[aria-label="Message input"], [aria-label="メッセージ入力"]') ||
+      (element.getAttribute('placeholder') ?? element.getAttribute('data-placeholder') ?? '')
+        .startsWith('Ask anything'));
+  }
+
+  function conversationEditor() {
+    const candidates = visibleEditors().filter(isMessageEditor);
     return candidates.length === 1 ? candidates[0] : null;
   }
 
@@ -224,7 +241,15 @@
   }
 
   function updatePageButton() {
-    const editor = conversationEditor();
+    const inspected = visibleEditors();
+    const candidates = inspected.filter(isMessageEditor);
+    const editor = candidates.length === 1 ? candidates[0] : null;
+    const editorCounts = { visible: inspected.length, matched: candidates.length };
+    const signature = editorCounts.visible + '/' + editorCounts.matched;
+    if (signature !== lastEditorCounts) {
+      lastEditorCounts = signature;
+      if (!editor) observe('no-editor', editorCounts);
+    }
     if (editor === buttonEditor && pageButton?.isConnected) return;
     pageButton?.remove();
     pageButton = null;
@@ -247,9 +272,11 @@
     });
     editor.before(button);
     pageButton = button;
+    observe(visible(button) ? 'button-ready' : 'button-hidden', editorCounts);
   }
 
   async function insertCurrentPage(editor, button) {
+    observe('capture-start');
     busy = true;
     button.disabled = true;
     button.textContent = 'ページを取得中…';
@@ -257,6 +284,9 @@
     try {
       checkDraft(editor);
       const route = await conversationRoute();
+      if (!document.hasFocus() || document.visibilityState !== 'visible' || conversationEditor() !== editor) {
+        throw new Error('公式サイドパネルの入力欄を開いて、もう一度選んでください。');
+      }
       const context = await request('insert-active');
       if (!context?.ok) throw new Error(context?.error || 'Chrome ページの資料を取得できませんでした。');
       if (route !== await conversationRoute() || location.href !== originalUrl ||
@@ -265,7 +295,9 @@
       }
       insertDraft(editor, context.text);
       report('現在のページを下書きに追加しました。');
+      observe('draft-added');
     } catch (error) {
+      observe('failed');
       report(error.message);
     } finally {
       busy = false;
@@ -387,6 +419,7 @@
   }
 
   void request('available').then(result => {
+    observe(result?.ok ? 'connected' : result?.denied ? 'needs-permission' : 'rejected-origin');
     if (result?.ok) startMenuObserver();
   }).catch(() => {});
 

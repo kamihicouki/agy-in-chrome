@@ -8,6 +8,7 @@ const leases = new Map();
 
 export const officialHosts = [officialOrigin + '/*', rendererOrigin + '/*'];
 export const composerPermissions = { origins: officialHosts, permissions: ['tabs'] };
+export const attachmentObservationPrefix = 'agy-attachment-observation-';
 export const attachmentSetupMenu = 'configure-antigravity-attachments';
 export const stageMarkdownMenu = 'stage-antigravity-markdown';
 export const stageImageMenu = 'stage-antigravity-image';
@@ -50,7 +51,15 @@ function isPanelSender(sender) {
 
 async function focusedSource() {
   const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
-  if (!win.focused || win.id == null) throw new Error('Chrome の対象ウィンドウを選んでください。');
+  if (win.id == null) throw new Error('Chrome の対象ウィンドウを選んでください。');
+  if (!win.focused) {
+    // Native panel focus can leave the browser window flag unset. The caller
+    // still checks the composer focus; only accept this case with one window.
+    const windows = await chrome.windows.getAll({ windowTypes: ['normal'] });
+    if (windows.length !== 1 || windows[0].id !== win.id) {
+      throw new Error('Chrome の対象ウィンドウを選んでください。');
+    }
+  }
   const [tab] = await chrome.tabs.query({ windowId: win.id, active: true });
   return { windowId: win.id, tab };
 }
@@ -107,7 +116,31 @@ async function captureImage(tab) {
   return { dataUrl, name: 'antigravity-page-context.png' };
 }
 
+async function recordPanelObservation(message, sender) {
+  if (sender.id !== chrome.runtime.id) return { ok: false };
+  const origin = new URL(sender.url).origin;
+  const frame = origin === officialOrigin ? 'outer' : origin === rendererOrigin ? 'renderer' : null;
+  if (!frame) return { ok: false };
+  const status = isPanelSender(sender)
+    ? message.state
+    : (sender.tab?.id != null && sender.tab.id !== -1 ? 'ordinary-tab' : 'rejected-origin');
+  if (!['connected', 'unexpected-frame', 'needs-permission', 'no-editor', 'button-ready', 'button-hidden',
+    'capture-start', 'draft-added', 'failed', 'ordinary-tab', 'rejected-origin'].includes(status)) return { ok: false };
+  // This is deliberately limited to a status and timestamp, without page or conversation data.
+  if (status !== 'ordinary-tab') {
+    const observation = { status, at: Date.now() };
+    const { visible, matched } = message.editorCounts ?? {};
+    if (Number.isSafeInteger(visible) && Number.isSafeInteger(matched) &&
+        visible >= matched && matched >= 0 && visible <= 1000) {
+      observation.editorCounts = { visible, matched };
+    }
+    await chrome.storage.session.set({ [attachmentObservationPrefix + frame]: observation });
+  }
+  return { ok: true };
+}
+
 async function handlePanelRequest(message, sender) {
+  if (message.action === 'observe') return recordPanelObservation(message, sender);
   if (!isPanelSender(sender)) throw new Error('公式サイドパネルで操作してください。');
   if (!await chrome.permissions.contains(composerPermissions)) {
     return { ok: false, denied: true, error: '拡張の設定で公式 Add context の添付を有効にしてください。' };

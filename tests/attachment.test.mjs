@@ -5,6 +5,8 @@ import { installAttachmentMessaging, stageContext } from '../attachment.mjs';
 test('attachment requests are scoped to the panel document, window and current source', async () => {
   let listener;
   let windowId = 5;
+  let windowFocused = true;
+  let normalWindows = [5];
   let active = { id: 1, windowId, url: 'https://example.com/page?private=1', title: 'Fixture', active: true };
   let permission = false;
   let enabled = true;
@@ -26,7 +28,8 @@ test('attachment requests are scoped to the panel document, window and current s
       onMessage: { addListener: callback => { listener = callback; } },
     },
     windows: {
-      getLastFocused: async () => ({ id: windowId, focused: true }),
+      getLastFocused: async () => ({ id: windowId, focused: windowFocused }),
+      getAll: async () => normalWindows.map(id => ({ id })),
       onRemoved: { addListener() {} },
     },
     tabs: {
@@ -64,6 +67,15 @@ test('attachment requests are scoped to the panel document, window and current s
       send({ action: 'take', sourceKey, source, format }, from);
 
     assert.equal((await send({ action: 'list' }, { ...sender, tab: { id: 7 } })).ok, false);
+    await send({ action: 'observe', state: 'button-ready' });
+    const footprint = saved['agy-attachment-observation-outer'];
+    assert.equal(footprint.status, 'button-ready');
+    assert.deepEqual(Object.keys(footprint).sort(), ['at', 'status']);
+    windowFocused = false;
+    normalWindows = [5, 6];
+    assert.equal((await send({ action: 'insert-active' })).ok, false);
+    normalWindows = [5];
+
     let { sourceKey } = await send({ action: 'list' });
     assert.equal((await take(sourceKey)).ok, false);
     assert.match(permissionPage.url, /attachment-settings\.html\?window=5&grant=/);
@@ -71,6 +83,7 @@ test('attachment requests are scoped to the panel document, window and current s
     const oneTouch = await send({ action: 'insert-active' });
     assert.match(oneTouch.text, /\*\*Article body\*\*/);
     activeTabGrant = false;
+    windowFocused = true;
     permissionPage = undefined;
     captureError = 'Renderer unavailable';
     assert.equal((await send({ action: 'insert-active' })).ok, false);
