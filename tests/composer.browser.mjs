@@ -6,22 +6,44 @@ import { chromium } from 'playwright';
 import { readArticleMarkdown } from '../markdown.mjs';
 
 const composerSource = await readFile(new URL('../composer.js', import.meta.url), 'utf8');
+const menuStyle = new URL('../composer-menu.css', import.meta.url).pathname;
 const testPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY1sAAAAASUVORK5CYII=';
 const controls = `
+  <style>
+    [role="menu"] { box-sizing: border-box; width: min(290px, 100%); padding: 4px; background: #f5f5f6; color: #41424a; }
+    [role="menu"] > button {
+      box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%;
+      min-height: 28px; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent;
+      color: inherit; font: 500 14px/20px Arial, sans-serif; letter-spacing: 0.1px;
+    }
+    [role="menu"] > button > svg { width: 14px; height: 14px; }
+    @media (prefers-color-scheme: dark) {
+      [role="menu"] { background: #17171a; color: #bcbcc5; }
+    }
+  </style>
   <main id="composer">
     <textarea aria-label="Message input">既存の下書き</textarea>
     <button aria-label="Add context">Add context</button>
     <input type="file" id="attachment" accept=".md,.png" hidden>
     <div role="menu" hidden>
-      <button aria-controls="attachment">Files</button><button>Browser</button>
+      <button role="menuitem" aria-controls="attachment"><svg aria-hidden="true"></svg><span>Files</span></button>
+      <button role="menuitem"><svg aria-hidden="true"></svg><span>Browser</span></button>
     </div>
     <section id="attachments"></section>
+    <button type="button" aria-label="Record voice memo">Microphone</button>
     <button type="button" id="send">Send message</button>
   </main>
   <script>
-    document.querySelector('[aria-label="Add context"]').onclick = () => {
+    const trigger = document.querySelector('[aria-label="Add context"]');
+    trigger.onclick = () => {
       const menu = document.querySelector('[role="menu"]');
       menu.hidden = !menu.hidden;
+    };
+    document.querySelector('[role="menu"]').onkeydown = event => {
+      if (event.key === 'Escape') {
+        event.currentTarget.hidden = true;
+        trigger.focus();
+      }
     };
     document.querySelector('#attachment').onchange = ({target}) => {
       const file = target.files[0];
@@ -30,6 +52,72 @@ const controls = `
     };
     document.querySelector('#send').onclick = () => document.body.dataset.sent = 'true';
   </script>`;
+
+test('the official microphone keeps its own click and keyboard handling and reports permission blockers', async () => {
+  const server = createServer((_request, response) => {
+    response.setHeader('Content-Type', 'text/html;charset=utf-8');
+    response.end(controls);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  let browser;
+  try {
+    browser = await chromium.launch({ channel: 'chromium' });
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      chrome.runtime = { sendMessage: async () => ({ ok: true }) };
+      Object.defineProperty(document, 'featurePolicy', {
+        value: { allowsFeature: () => document.body.dataset.micPolicy !== 'blocked' },
+      });
+      window.micStatus = new EventTarget();
+      Object.defineProperty(window.micStatus, 'state', { get: () => document.body.dataset.micPermission });
+      navigator.permissions.query = async () => window.micStatus;
+    });
+    await page.goto(origin);
+    const mic = page.getByRole('button', { name: 'Record voice memo' });
+    await mic.evaluate(button => {
+      button.addEventListener('click', () => {
+        button.dataset.nativeClicks = Number(button.dataset.nativeClicks ?? 0) + 1;
+        if (document.body.dataset.micPermission === 'granted') {
+          button.setAttribute('aria-label', button.getAttribute('aria-label') === 'Record voice memo'
+            ? 'Stop recording' : 'Record voice memo');
+        }
+      });
+    });
+    await page.addScriptTag({ content: composerSource.replace('https://antigravity.google.com', origin) });
+    const state = async (permission, policy = 'allowed') => {
+      await page.evaluate(([permission, policy]) => {
+        document.body.dataset.micPermission = permission;
+        document.body.dataset.micPolicy = policy;
+      }, [permission, policy]);
+    };
+    const notice = page.getByRole('status');
+    await state('prompt');
+    await mic.evaluate(button => button.click());
+    assert.equal(await notice.count(), 0);
+    await mic.click();
+    await notice.getByText(/公式画面を通常のタブで開き/).waitFor({ timeout: 3000 });
+    await state('granted');
+    await page.evaluate(() => window.micStatus.dispatchEvent(new Event('change')));
+    await notice.waitFor({ state: 'detached' });
+    await state('denied');
+    await mic.press('Enter');
+    await notice.getByText(/Chrome のサイト設定/).waitFor({ timeout: 3000 });
+    await state('denied', 'blocked');
+    await mic.click();
+    await notice.getByText(/公式フレームがマイクの使用を制限/).waitFor({ timeout: 3000 });
+    await state('granted');
+    await mic.click();
+    await page.getByRole('button', { name: 'Stop recording' }).press('Space');
+    assert.equal(await mic.getAttribute('data-native-clicks'), '6');
+    assert.equal(await notice.count(), 0);
+    assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き');
+    assert.equal(await page.locator('body').getAttribute('data-sent'), null);
+  } finally {
+    await browser?.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
 
 test('isolated browser inserts draft text and verifies Markdown and PNG chips separately', async () => {
   const server = createServer((_request, response) => {
@@ -57,14 +145,53 @@ test('isolated browser inserts draft text and verifies Markdown and PNG chips se
       };
     }, testPng);
     await page.goto(origin);
+    await page.addStyleTag({ path: menuStyle });
     await page.addScriptTag({ content: composerSource.replace('https://antigravity.google.com', origin) });
     await page.waitForFunction(() => !document.querySelector('button[title*="現在の Chrome タブ"]'));
     assert.equal(await page.getByRole('button', { name: 'このページを下書きに追加' }).count(), 0);
-    await page.getByRole('button', { name: 'Add context' }).click();
-    const draft = page.getByRole('menuitem', { name: '現在の Chrome ページを下書きに挿入' });
+    const trigger = page.getByRole('button', { name: 'Add context' });
+    const group = page.getByRole('group', { name: 'agy in chrome' });
+    const files = page.getByRole('menuitem', { name: 'Files' });
+    const browserItem = page.getByRole('menuitem', { name: 'Browser' });
+    const attach = group.getByRole('menuitem', { name: '現在の Chrome ページを添付' });
+    const draft = group.getByRole('menuitem', { name: '現在の Chrome ページを下書きに挿入' });
+    const rowMetrics = row => row.evaluate(element => {
+      const rowBox = element.getBoundingClientRect();
+      const iconBox = element.querySelector('svg').getBoundingClientRect();
+      const label = element.querySelector('span');
+      const style = getComputedStyle(label);
+      return [rowBox.height, iconBox.width, iconBox.height, iconBox.left - rowBox.left,
+        label.getBoundingClientRect().left - rowBox.left, style.color, style.fontFamily,
+        style.fontSize, style.fontWeight, style.lineHeight, style.letterSpacing,
+        getComputedStyle(element).borderRadius];
+    });
+    for (const colorScheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme });
+      await trigger.click();
+      await group.getByText('agy in chrome', { exact: true }).waitFor();
+      assert.deepEqual(await rowMetrics(attach), await rowMetrics(files), colorScheme);
+      assert.deepEqual(await rowMetrics(draft), await rowMetrics(files), colorScheme);
+      await browserItem.focus();
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await attach.evaluate(item => item === document.activeElement && item.matches(':focus-visible')), true);
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await draft.evaluate(item => item === document.activeElement), true);
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.press('ArrowUp');
+      assert.equal(await browserItem.evaluate(item => item === document.activeElement), true);
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Escape');
+      assert.equal(await trigger.evaluate(button => button === document.activeElement), true);
+      await page.locator('.agy-context-extension').waitFor({ state: 'detached' });
+    }
+    await page.setViewportSize({ width: 180, height: 600 });
+    await trigger.click();
+    assert.ok((await draft.boundingBox()).height > (await files.boundingBox()).height);
+    assert.equal(await group.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+    await page.setViewportSize({ width: 480, height: 600 });
     await draft.evaluate(button => button.click());
     assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き');
-    await draft.click();
+    await draft.press('Enter');
     assert.equal(await page.getByRole('textbox').inputValue(), '既存の下書き\n\n# Synthetic Markdown');
     await page.getByRole('menuitem', { name: /現在の Chrome ページを添付/ }).click();
     await page.getByText(/^chrome-page-[a-f0-9]+\.md$/).waitFor();
@@ -159,6 +286,7 @@ test('a parent route change cancels insertion even when the child editor stays m
     const script = composerSource.replace('https://antigravity.google.com', parent.origin)
       .replace('https://antigravity.static.usercontent.goog', renderer.origin);
     await page.addScriptTag({ content: script });
+    await frame.addStyleTag({ path: menuStyle });
     await frame.addScriptTag({ content: script });
     await frame.getByRole('button', { name: 'Add context' }).click();
     await frame.getByRole('menuitem', { name: '現在の Chrome ページを下書きに挿入' }).click();

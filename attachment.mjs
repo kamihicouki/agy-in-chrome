@@ -29,11 +29,14 @@ export async function registerComposer() {
       if (existing) await chrome.scripting.unregisterContentScripts({ ids: [id] });
       return false;
     }
+    const css = ['composer-menu.css'];
     if (!existing) {
       await chrome.scripting.registerContentScripts([{
-        id, matches: officialHosts, js: ['composer.js'], allFrames: true,
+        id, matches: officialHosts, js: ['composer.js'], css, allFrames: true,
         runAt: 'document_idle', persistAcrossSessions: true,
       }]);
+    } else if (existing.css?.join() !== css.join()) {
+      await chrome.scripting.updateContentScripts([{ id, css }]);
     }
     return true;
   });

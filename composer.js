@@ -24,6 +24,8 @@
   let busy = false;
   let status;
   let statusTimer;
+  let microphoneNotice;
+  let microphoneCheck = 0;
   let lastEditorCounts;
   const unverifiedDrafts = new WeakMap();
 
@@ -239,12 +241,65 @@
   }
 
   function updateEditorObservation() {
+    if (microphoneNotice && (microphoneNotice.url !== location.href ||
+      !microphoneNotice.editor.isConnected || !visible(microphoneNotice.control) ||
+      !isMicrophoneButton(microphoneNotice.control))) {
+      clearMicrophoneNotice();
+    }
     const inspected = visibleEditors();
     const editorCounts = { visible: inspected.length, matched: inspected.filter(isMessageEditor).length };
     const signature = editorCounts.visible + '/' + editorCounts.matched;
     if (signature === lastEditorCounts) return;
     lastEditorCounts = signature;
     observe(editorCounts.matched === 1 ? 'editor-ready' : 'no-editor', editorCounts);
+  }
+
+  function isMicrophoneButton(control) {
+    return (label(control) || control.title) === 'Record voice memo';
+  }
+
+  function clearMicrophoneNotice() {
+    microphoneNotice?.listener.abort();
+    microphoneNotice?.element.remove();
+    microphoneNotice = null;
+  }
+
+  async function explainMicrophone(control) {
+    clearMicrophoneNotice();
+    const check = ++microphoneCheck;
+    const editor = conversationEditor();
+    if (!editor) return;
+    const url = location.href;
+    // Let the official button handle activation and update its recording state first.
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const blocked = document.featurePolicy?.allowsFeature('microphone') === false;
+    const permission = blocked ? null :
+      await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
+    if (check !== microphoneCheck || location.href !== url || conversationEditor() !== editor ||
+      !visible(control) || !isMicrophoneButton(control)) return;
+
+    const text = blocked
+      ? '公式フレームがマイクの使用を制限しています。'
+      : permission?.state === 'prompt'
+        ? 'Chrome の許可画面が出ない場合は、公式画面を通常のタブで開き、マイクを押して許可してください。そのあと、このサイドパネルで押し直してください。'
+        : permission?.state === 'denied'
+          ? 'マイクが許可されていません。Chrome のサイト設定と、macOS の「プライバシーとセキュリティ」のマイク設定を確認してください。'
+          : null;
+    if (!text) return;
+    let composer = editor.parentElement;
+    while (composer && !composer.contains(control)) composer = composer.parentElement;
+    if (!composer || composer === document.body) return;
+
+    const element = document.createElement('div');
+    element.className = 'agy-microphone-notice';
+    const message = document.createElement('span');
+    message.setAttribute('role', 'status');
+    element.append(message);
+    composer.before(element);
+    message.textContent = 'agy in chrome · ' + text;
+    const listener = new AbortController();
+    microphoneNotice = { element, editor, control, url, listener };
+    permission?.addEventListener('change', clearMicrophoneNotice, { signal: listener.signal });
   }
 
   async function runAction(menu, selected, operation, source, format) {
@@ -293,15 +348,77 @@
     }
   }
 
+  function createMenuGroup(menu) {
+    const group = document.createElement('div');
+    group.className = 'agy-context-extension';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'agy in chrome');
+
+    // Read visual properties only. Official classes and behavior stay on official rows.
+    const rows = [...menu.querySelectorAll(controlSelector)].filter(visible);
+    const fileRow = rows.find(row => label(row) === 'Files');
+    const sample = fileRow && !fileRow.matches(':hover, :focus') ? fileRow
+      : rows.find(row => !row.matches(':hover, :focus')) ?? fileRow;
+    if (sample) {
+      const row = getComputedStyle(sample);
+      const text = [...sample.querySelectorAll('span')].find(span =>
+        visible(span) && span.textContent.trim() === label(sample));
+      const font = getComputedStyle(text ?? sample);
+      const icon = sample.querySelector('svg')?.getBoundingClientRect();
+      const values = {
+        color: font.color,
+        'font-family': font.fontFamily,
+        'font-size': font.fontSize,
+        'font-weight': font.fontWeight,
+        'line-height': font.lineHeight,
+        tracking: font.letterSpacing,
+        gap: parseFloat(row.columnGap) > 0 ? row.columnGap : '',
+        'row-height': sample.getBoundingClientRect().height + 'px',
+        'inset-top': row.paddingBlockStart,
+        'inset-bottom': row.paddingBlockEnd,
+        'inset-start': row.paddingInlineStart,
+        'inset-end': row.paddingInlineEnd,
+        radius: row.borderRadius,
+        'icon-width': icon?.width > 0 ? icon.width + 'px' : '',
+        'icon-height': icon?.height > 0 ? icon.height + 'px' : '',
+      };
+      for (const [name, value] of Object.entries(values)) {
+        if (value) group.style.setProperty('--agy-context-' + name, value);
+      }
+    }
+    return group;
+  }
+
+  function optionIcon(operation) {
+    const namespace = 'http://www.w3.org/2000/svg';
+    const icon = document.createElementNS(namespace, 'svg');
+    icon.setAttribute('class', 'agy-context-icon');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('focusable', 'false');
+    icon.setAttribute('fill', 'none');
+    icon.setAttribute('stroke', 'currentColor');
+    icon.setAttribute('stroke-width', '1.6');
+    icon.setAttribute('stroke-linecap', 'round');
+    icon.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(namespace, 'path');
+    path.setAttribute('d', operation === 'attach'
+      ? 'M8 12.5l5.5-5.5a2 2 0 0 1 2.8 2.8l-7 7a3.5 3.5 0 0 1-5-5l7.2-7.2a5 5 0 0 1 7.1 7.1l-6 6'
+      : 'M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M13 3v5h5M11 17l1-3 6-6 2 2-6 6-3 1z');
+    icon.append(path);
+    return icon;
+  }
+
   function addOption(group, menu, selected, description, operation, source, format) {
     const item = document.createElement('button');
     item.type = 'button';
     item.setAttribute('role', 'menuitem');
-    item.textContent = description;
-    Object.assign(item.style, {
-      cursor: 'pointer', display: 'block', textAlign: 'start', width: '100%',
-      padding: '7px 10px', borderRadius: '5px',
-    });
+    item.className = 'agy-context-item';
+    item.tabIndex = -1;
+    const text = document.createElement('span');
+    text.className = 'agy-context-label';
+    text.textContent = description;
+    item.append(optionIcon(operation), text);
     item.addEventListener('click', event => {
       if (!event.isTrusted) return;
       event.stopPropagation();
@@ -326,9 +443,7 @@
       const payload = await request('list');
       const selected = { ...payload, route };
       if (pendingMenu !== opening || !visible(menu) || !selected?.ok) return;
-      const group = document.createElement('div');
-      group.setAttribute('role', 'group');
-      group.setAttribute('aria-label', 'Chrome ページ');
+      const group = createMenuGroup(menu);
       if (selected.sourceKey && selected.active) {
         addOption(group, menu, selected, '現在の Chrome ページを添付', 'attach', 'active', 'markdown');
         addOption(group, menu, selected, '現在の Chrome ページを下書きに挿入', 'draft', 'active', 'markdown');
@@ -341,6 +456,11 @@
         }
       }
       if (group.childElementCount) {
+        const heading = document.createElement('div');
+        heading.className = 'agy-context-heading';
+        heading.setAttribute('aria-hidden', 'true');
+        heading.textContent = 'agy in chrome';
+        group.prepend(heading);
         menuGroup = group;
         menu.append(group);
       }
@@ -368,8 +488,10 @@
     if (officialPage) window.addEventListener('message', replyWithRoute);
     document.addEventListener('click', event => {
       const control = event.target instanceof Element ? event.target.closest(controlSelector) : null;
-      if (event.isTrusted && control && label(control) === 'Add context') {
-        allowedUntil = Date.now() + 60_000;
+      if (event.isTrusted && control) {
+        const name = label(control);
+        if (name === 'Add context') allowedUntil = Date.now() + 60_000;
+        if (isMicrophoneButton(control)) void explainMicrophone(control);
       }
       scheduleMenuCheck();
     }, true);
@@ -399,7 +521,7 @@
     }, true);
     new MutationObserver(scheduleMenuCheck).observe(document.documentElement, {
       childList: true, subtree: true, attributes: true,
-      attributeFilter: ['aria-hidden', 'class', 'data-state', 'hidden', 'style'],
+      attributeFilter: ['aria-hidden', 'aria-label', 'class', 'data-state', 'hidden', 'style', 'title'],
     });
     scheduleMenuCheck();
   }

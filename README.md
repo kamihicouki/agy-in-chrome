@@ -10,7 +10,13 @@
 
 [Google 公式手順](https://antigravity.google/docs/remote-control/)
 
-## Add context からページ資料を渡す（0.6.3 試作）
+## 公式マイクを使う
+
+公式 Remote Control の入力欄にあるマイクを押します。サイドパネルで Chrome の許可画面が出ない場合は、同じ接続先を同じ Chrome プロファイルの通常タブで開き、公式マイクから許可を求めます。許可後、サイドパネルでマイクを押し直してください。
+
+マイク横の状態案内は「ワンタッチ連携の設定・診断」で公式画面への連携を許可すると表示できます。録音と下書きへの反映は公式画面が処理します。[Chrome のマイク設定](https://support.google.com/chrome/answer/2693767?hl=ja)
+
+## Add context からページ資料を渡す（0.6.4 試作）
 
 1. 拡張アイコンを右クリックして「ワンタッチ連携の設定・診断」を選び、設定タブで Chrome の許可を確認します。公式パネルに反映するには、「接続先・資料プレビュー」を一度開いてから公式パネルに戻ります。
 2. 公式会話の Add context で「現在の Chrome ページを添付」を選びます。初めてのサイトでは設定タブが開きます。許可した後は、そのタブを閉じて元のページへ戻り、再度項目を選びます。
@@ -36,3 +42,5 @@ Chrome の拡張機能管理画面で、デベロッパー モードを有効に
 配布版と公開手順は [GitHub Releases](https://github.com/kamihicouki/agy-in-chrome/releases) と [Chrome Web Store 公開手順](docs/store-release.md) を参照してください。
 
 隔離ブラウザでの開発検証では Playwright の Chromium を使います。`node --test tests/*.test.mjs tests/composer.browser.mjs tests/native-panel.browser.mjs experiments/mcp-context/server.test.mjs` を実行します。
+
+公式画面に追加する UI の方針と検証条件は [デザイン定義](docs/design.md) を参照してください。

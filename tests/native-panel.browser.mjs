@@ -102,6 +102,12 @@ test('Add context in a native cross-origin side panel inserts the active tab con
       }
     };
     await click('Add context');
+    const menuStyle = await waitFor(() => innerClient.eval(`(() => {
+      const group = document.querySelector('.agy-context-extension');
+      if (group) return { heading: group.firstElementChild.textContent,
+        display: getComputedStyle(group.querySelector('.agy-context-item')).display };
+    })()`), 'extension menu styles');
+    assert.deepEqual(menuStyle, { heading: 'agy in chrome', display: 'flex' });
     await click('現在の Chrome ページを下書きに挿入');
     const result = await waitFor(async () => {
       const observed = await innerClient.eval(`({status:document.querySelector('[role=status]')?.textContent,draft:document.querySelector('textarea').value})`);

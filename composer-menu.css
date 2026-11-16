@@ -1,0 +1,81 @@
+.agy-microphone-notice {
+  margin-block: 0 6px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.agy-context-extension {
+  min-width: 0;
+  margin-block-start: 4px;
+  padding-block-start: 4px;
+  border-block-start: 1px solid color-mix(in srgb, var(--agy-context-color, CanvasText) 22%, transparent);
+  color: var(--agy-context-color, CanvasText);
+  font-family: var(--agy-context-font-family, inherit);
+  font-size: var(--agy-context-font-size, inherit);
+  font-weight: var(--agy-context-font-weight, inherit);
+  line-height: var(--agy-context-line-height, inherit);
+  letter-spacing: var(--agy-context-tracking, inherit);
+}
+
+.agy-context-extension > .agy-context-heading {
+  padding-block: 3px 4px;
+  padding-inline: var(--agy-context-inset-start, 8px) var(--agy-context-inset-end, 8px);
+  font-size: 0.82em;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.agy-context-extension > .agy-context-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--agy-context-gap, 8px);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--agy-context-row-height, 28px);
+  padding-block: var(--agy-context-inset-top, 4px) var(--agy-context-inset-bottom, 4px);
+  padding-inline: var(--agy-context-inset-start, 8px) var(--agy-context-inset-end, 8px);
+  border: 0;
+  border-radius: var(--agy-context-radius, 4px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.agy-context-extension > .agy-context-item:is(:hover, :focus-visible) {
+  background-color: color-mix(in srgb, var(--agy-context-color, CanvasText) 13%, transparent);
+}
+
+.agy-context-extension > .agy-context-item:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+}
+
+.agy-context-extension .agy-context-icon {
+  flex: none;
+  width: var(--agy-context-icon-width, 16px);
+  height: var(--agy-context-icon-height, 16px);
+}
+
+.agy-context-extension .agy-context-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (forced-colors: active) {
+  .agy-context-extension {
+    border-block-start-color: ButtonText;
+    color: ButtonText;
+  }
+  .agy-context-extension > .agy-context-item:focus-visible {
+    outline-color: Highlight;
+  }
+}
