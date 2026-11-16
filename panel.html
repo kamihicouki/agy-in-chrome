@@ -10,9 +10,20 @@
 <body>
   <main>
     <h1>Antigravity</h1>
-    <p>今のタブの隣に公式画面を開きます。接続先は公式画面のメニューで選べます。</p>
-    <button id="split" type="button">隣に開く</button>
-    <a href="https://antigravity.google.com/" target="_blank" rel="noopener noreferrer">別タブで開く</a>
+    <label for="mode">公式画面の開き方</label>
+    <select id="mode">
+      <option value="split">分割表示</option>
+      <option value="tab">別タブ</option>
+      <option value="window">別ウィンドウ</option>
+    </select>
+
+    <h2>現在のタブを共有</h2>
+    <label><input id="viewport" type="checkbox"> 表示領域のテキストも含める</label>
+    <button id="capture" type="button">タブの情報を取得</button>
+    <label for="preview">コピーする内容</label>
+    <textarea id="preview" rows="8" disabled></textarea>
+    <button id="copy" type="button" disabled>コピーして開く</button>
+    <button id="open" type="button">公式画面を開く</button>
     <p id="status" role="status"></p>
   </main>
 </body>

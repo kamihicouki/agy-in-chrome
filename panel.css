@@ -4,16 +4,24 @@
 }
 
 main {
+  display: grid;
+  align-content: start;
+  gap: 8px;
   padding: 12px;
 }
 
-h1 {
-  font-size: 1.25rem;
-  margin-block: 0;
+h1, h2 { margin: 0; }
+h1 { font-size: 1.25rem; }
+h2 { font-size: 1rem; margin-block-start: 8px; }
+
+button, select {
+  min-block-size: 36px;
 }
 
-button {
-  min-block-size: 36px;
-  margin-inline-end: 8px;
-  cursor: pointer;
+textarea {
+  font: inherit;
+  min-inline-size: 0;
+  resize: vertical;
 }
+
+#status { margin: 0; }

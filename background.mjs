@@ -1,5 +1,8 @@
-async function setup() {
-  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-}
-chrome.runtime.onInstalled.addListener(() => { setup().catch(console.error); });
-chrome.runtime.onStartup.addListener(() => { setup().catch(console.error); });
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ windowId: tab.windowId }).catch(console.error);
+});
+
+// Earlier versions used Chrome's built-in action behavior.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
+});

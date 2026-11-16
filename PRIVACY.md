@@ -1,7 +1,9 @@
 # プライバシーポリシー
 
-Antigravity Remote Sidebar は、閲覧ページの内容、履歴、Google の認証情報、会話を取得・保存・送信しません。分析や広告のための通信は行いません。
+「タブの情報を取得」を押すと、拡張は現在の Web タブからタイトル、URL、選択したテキストを読み取ります。「表示領域のテキストも含める」を選んだ場合は、ページ内の表示範囲からもテキストを読み取ります。プレビューから URL のクエリとフラグメントを取り除きます。プレビューは編集できます。
 
-利用者が「隣に開く」または「別タブで開く」を選ぶと、Chrome が公式サイト `antigravity.google.com` を開きます。公式サイトでのアカウントや会話の取扱いには [Google のプライバシーポリシー](https://policies.google.com/privacy) が適用されます。
+取得内容はプレビューのためにサイドパネルのメモリに保持し、「コピーして開く」で端末のクリップボードに書き込みます。拡張は取得内容をサーバーに送信せず、履歴として保存しません。選んだ表示方法は端末に保存します。
+
+Antigravity を開くと Chrome が Google の公式サイトに接続します。公式画面に貼り付け、送信する内容には [Google のプライバシーポリシー](https://policies.google.com/privacy) が適用されます。
 
 お問い合わせは [GitHub Issues](https://github.com/kamihicouki/antigravity-sidebar/issues) へお願いします。

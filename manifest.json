@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Antigravity Remote Sidebar",
-  "description": "Open the official Antigravity web app beside the current tab.",
-  "version": "0.2.1",
+  "description": "Open Antigravity from Chrome and prepare context from your current tab.",
+  "version": "0.3.0",
   "minimum_chrome_version": "116",
   "permissions": [
-    "sidePanel"
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "scripting"
   ],
   "action": {
     "default_title": "Antigravity Remote Sidebar"
