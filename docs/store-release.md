@@ -15,4 +15,6 @@
 | `CWS_PUBLISHER_ID` | ダッシュボードの Publisher ID |
 | `CWS_EXTENSION_ID` | 初回アップロードで割り当てられた拡張 ID |
 
-初回版が公開されたら、リポジトリの変数 `CWS_PUBLISH_ENABLED` を `true` にします。更新 PR では `manifest.json` のバージョンを上げ、掲載情報の履歴を更新してから `production` にマージしてください。マージによる push を受け、Actions が ZIP を検証、アップロードし、審査を申請します。Google の審査を通過すると自動で公開されます。審査中に別版をマージした場合は審査完了後に最新の `production` で workflow を再実行してください。
+初回審査中でも、`production` でワークフローを手動実行し、既定の `verify_access` を選ぶと接続を確認できます。サービスアカウントで対象アイテムの公開版と審査版を読み取り、結果を Actions ログに記録します。この実行は ZIP のアップロードや審査申請を行いません。
+
+初回版が公開されたら、リポジトリの変数 `CWS_PUBLISH_ENABLED` を `true` にします。更新 PR では `manifest.json` のバージョンを上げ、掲載情報の履歴を更新してから `production` にマージしてください。マージによる push を受け、Actions が ZIP を検証、アップロードし、審査を申請します。Google の審査を通過すると自動で公開されます。審査中に別版をマージした場合は、審査完了後に最新の `production` で `verify_access` を外して手動実行してください。

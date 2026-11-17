@@ -4,6 +4,11 @@ on:
   push:
     branches: [production]
   workflow_dispatch:
+    inputs:
+      verify_access:
+        description: Verify service-account access and read the store status without submitting
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -31,7 +36,7 @@ jobs:
           if-no-files-found: error
   submit:
     needs: package
-    if: vars.CWS_PUBLISH_ENABLED == 'true'
+    if: github.ref == 'refs/heads/production' && (inputs.verify_access || vars.CWS_PUBLISH_ENABLED == 'true')
     runs-on: ubuntu-latest
     environment: chrome-web-store
     permissions:
@@ -39,7 +44,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - run: python3 scripts/package.py
+      - if: '!inputs.verify_access'
+        run: python3 scripts/package.py
       - id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -48,8 +54,14 @@ jobs:
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/chromewebstore
           create_credentials_file: false
-      - run: node scripts/publish-store.mjs
+      - run: |
+          if [[ "$VERIFY_ACCESS" == 'true' ]]; then
+            node scripts/publish-store.mjs --verify-access
+          else
+            node scripts/publish-store.mjs
+          fi
         env:
+          VERIFY_ACCESS: ${{ inputs.verify_access }}
           CWS_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}

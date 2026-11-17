@@ -29,6 +29,22 @@ async function request(operation, { method = 'GET', body, media = false } = {}) 
 }
 
 const status = await request('fetchStatus');
+if (status.name !== item || status.itemId !== CWS_EXTENSION_ID) {
+  throw new Error('Chrome Web Store returned an unexpected item.');
+}
+
+if (process.argv.includes('--verify-access')) {
+  console.log(`Chrome Web Store access verified for ${status.itemId}.`);
+  for (const [label, revision] of [
+    ['Published', status.publishedItemRevisionStatus],
+    ['Submitted', status.submittedItemRevisionStatus],
+  ]) {
+    const versions = revision?.distributionChannels?.map(channel => channel.crxVersion) ?? [];
+    console.log(`${label}: ${revision?.state ?? 'none'}${versions.length ? ` (${versions.join(', ')})` : ''}`);
+  }
+  process.exit(0);
+}
+
 const published = status.publishedItemRevisionStatus?.distributionChannels ?? [];
 const submitted = status.submittedItemRevisionStatus;
 if (published.some(channel => channel.crxVersion === version)) {
