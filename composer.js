@@ -115,6 +115,24 @@
     return candidates.length === 1 ? candidates[0] : null;
   }
 
+  function addContextTrigger(editor) {
+    for (let container = editor?.parentElement; container && container !== document.body; container = container.parentElement) {
+      const controls = [...container.querySelectorAll(controlSelector)].filter(node =>
+        visible(node) && label(node).toLowerCase() === 'add context');
+      if (controls.length === 1) return { container, button: controls[0] };
+      if (controls.length > 1) break;
+    }
+    return null;
+  }
+
+  function closeContextMenu(menu, editor) {
+    const trigger = addContextTrigger(editor)?.button;
+    allowedUntil = 0;
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    if (visible(menu)) trigger?.click();
+    if (editor?.isConnected) editor.focus({ preventScroll: true });
+  }
+
   function extensionChip() {
     const chip = document.createElement('span');
     chip.className = 'agy-brand-chip';
@@ -169,7 +187,9 @@
         button.type = 'button';
         button.className = 'agy-pin-toggle';
         button.setAttribute('aria-label', 'このタブに会話を固定');
-        button.title = 'このタブに会話を固定・解除';
+        const tip = document.createElement('span');
+        tip.className = 'agy-pin-tip';
+        tip.setAttribute('aria-hidden', 'true');
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('aria-hidden', 'true');
@@ -180,23 +200,24 @@
         button.addEventListener('click', event => {
           if (event.isTrusted) void toggleConversationPin();
         });
-        const badge = document.createElement('span');
-        badge.className = 'agy-pin-state';
-        badge.textContent = 'このタブに固定';
-        group.append(button, extensionChip(), badge);
+        button.addEventListener('keydown', event => {
+          if (event.key === 'Escape') group.dataset.dismissed = 'true';
+        });
+        group.addEventListener('pointerleave', () => { delete group.dataset.dismissed; });
+        button.addEventListener('blur', () => { delete group.dataset.dismissed; });
+        group.append(button, tip);
         search.after(group);
-        pinUI = { group, button, badge, search };
+        pinUI = { group, button, tip, search };
       }
-      const pressed = Boolean(state?.pinned || view.pinToken);
+      const pressed = state?.ok ? Boolean(state.pinned) : Boolean(view.pinToken);
       pinUI.view = view;
       if (pinUI.button.disabled === Boolean(state?.ready)) pinUI.button.disabled = !state?.ready;
-      const hint = state?.ready ? 'このタブに会話を固定・解除' :
-        state?.error ?? '固定する公式会話を開いてください。';
-      if (pinUI.button.title !== hint) pinUI.button.title = hint;
+      const hint = state?.ready ? (pressed ? 'このタブの固定を解除' : 'このタブに固定')
+        : state?.error ?? '固定する公式会話を開いてください。';
+      if (pinUI.tip.textContent !== hint) pinUI.tip.textContent = hint;
       if (pinUI.button.getAttribute('aria-pressed') !== String(pressed)) {
         pinUI.button.setAttribute('aria-pressed', String(pressed));
       }
-      if (pinUI.badge.hidden === pressed) pinUI.badge.hidden = !pressed;
     } catch {
       disableConversationPin();
     } finally {
@@ -259,7 +280,8 @@
 
   async function attachFile(input, format, payload, stillCurrent) {
     const extension = format === 'image' ? '.png' : '.md';
-    const name = 'chrome-page-' + crypto.randomUUID().slice(0, 8) + extension;
+    const name = /^chrome-page-[a-z0-9-]+[.](md|png)$/.test(payload.name ?? '') && payload.name.endsWith(extension)
+      ? payload.name : 'chrome-page-' + crypto.randomUUID().slice(0, 8) + extension;
     const mime = format === 'image' ? 'image/png' : 'text/markdown';
     let contents = payload.text;
     if (format === 'image') {
@@ -326,15 +348,18 @@
     }
   }
 
-  function report(text) {
+  function report(text, error = false) {
+    const composer = addContextTrigger(conversationEditor())?.container;
     if (!status?.isConnected) {
       status = document.createElement('div');
+      status.className = 'agy-action-notice';
       status.setAttribute('role', 'status');
-      Object.assign(status.style, {
-        position: 'fixed', insetInline: '12px', insetBlockEnd: '12px', zIndex: '2147483647',
-        background: 'Canvas', color: 'CanvasText', border: '1px solid GrayText',
-        borderRadius: '8px', padding: '8px 12px', pointerEvents: 'none',
-      });
+    }
+    status.classList.toggle('agy-action-notice-floating', !composer);
+    status.classList.toggle('agy-action-notice-error', error);
+    if (composer) {
+      if (status.nextElementSibling !== composer) composer.before(status);
+    } else if (status.parentElement !== document.body) {
       document.body.append(status);
     }
     status.textContent = text;
@@ -413,13 +438,15 @@
     if (busy) return;
     const editor = conversationEditor();
     if (!editor) {
-      report('現在の下書きを一つに特定できませんでした。');
+      closeContextMenu(menu, null);
+      report('現在の下書きを一つに特定できませんでした。', true);
       return;
     }
     const originalUrl = location.href;
     const stillCurrent = () => location.href === originalUrl &&
       document.visibilityState === 'visible' && document.hasFocus() && conversationEditor() === editor;
-    const input = operation === 'attach' ? attachmentInput(menu, editor, format) : null;
+    let input = operation === 'attach' ? attachmentInput(menu, editor, format) : null;
+    closeContextMenu(menu, editor);
     if (operation === 'attach' && !input) {
       report('この画面の公式ファイル入力を特定できませんでした。本文の下書き挿入か右クリックのコピーをお使いください。');
       return;
@@ -442,6 +469,8 @@
         throw new Error('会話が切り替わりました。もう一度選んでください。');
       }
       if (operation === 'attach') {
+        if (!input.isConnected) input = attachmentInput(menu, editor, format);
+        if (!input) throw new Error('公式の添付入力が閉じられました。下書き挿入をお試しください。');
         await attachFile(input, format, context, stillCurrent);
         report('公式の添付を確認しました。');
       } else {
@@ -449,13 +478,12 @@
         report('本文を下書きに挿入しました。');
       }
     } catch (error) {
-      report(error.message);
+      report(error.message, true);
     } finally {
       busy = false;
       pendingMenu = null;
       menuGroup?.remove();
       menuGroup = null;
-      if (visible(menu)) scheduleMenuCheck();
     }
   }
 
@@ -495,6 +523,14 @@
       };
       for (const [name, value] of Object.entries(values)) {
         if (value) group.style.setProperty('--agy-context-' + name, value);
+      }
+    }
+    const header = [...menu.querySelectorAll('div, span, p, [role="heading"]')].find(node =>
+      !node.childElementCount && node.textContent.trim().toLowerCase() === 'add context' && visible(node));
+    if (header) {
+      const style = getComputedStyle(header);
+      for (const name of ['color', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'padding-inline-start', 'padding-inline-end']) {
+        group.style.setProperty('--agy-heading-' + name, style.getPropertyValue(name));
       }
     }
     return group;
@@ -574,7 +610,7 @@
         const heading = document.createElement('div');
         heading.className = 'agy-context-heading';
         heading.setAttribute('aria-hidden', 'true');
-        heading.append(extensionChip());
+        heading.textContent = 'agy in chrome';
         group.prepend(heading);
         menuGroup = group;
         menu.append(group);

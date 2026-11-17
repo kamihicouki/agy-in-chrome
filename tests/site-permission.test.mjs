@@ -25,6 +25,7 @@ test('Add Context reads two origins with all-site access and falls back after re
       onRemoved: history,
     },
     tabs: {
+      onRemoved: { addListener() {} },
       query: async () => [tab],
       get: async id => id === tab.id ? tab : null,
       create: async options => {

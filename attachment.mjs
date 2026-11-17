@@ -85,15 +85,39 @@ async function getStaged(windowId) {
   await chrome.storage.session.remove(key);
 }
 
+const tabReferenceKey = tabId => 'agy-source-tab-' + tabId;
+
+async function identifyCapture(tab, context, format) {
+  const key = tabReferenceKey(tab.id);
+  const tabReference = await navigator.locks.request(key, async () => {
+    const { [key]: existing } = await chrome.storage.session.get(key);
+    if (existing) return existing;
+    const created = crypto.randomUUID().slice(0, 8);
+    await chrome.storage.session.set({ [key]: created });
+    return created;
+  });
+  const captureReference = crypto.randomUUID().slice(0, 8);
+  const name = `chrome-page-${tabReference}-${captureReference}.${format === 'image' ? 'png' : 'md'}`;
+  if (format === 'image') return { ...context, name };
+  const [introduction, ...body] = context.text.split('\n\n');
+  const metadata = [
+    `> 元タブ ID: agy-tab-${tabReference}`,
+    `> 参照 ID: agy-page-${captureReference}`,
+    `> 取得日時: ${new Date().toISOString()}`,
+  ].join('\n');
+  return { ...context, name, text: [introduction, [metadata, ...body].join('\n')].join('\n\n') };
+}
+
 export async function stageContext(tab, format) {
   if (!sourceHost(tab.url)) throw new Error('このページは添付できません。');
   const epoch = sourceEpoch(tab.windowId);
   const context = format === 'image' ? await captureImage(tab) : await captureMarkdown(chrome, tab);
   if (!context) throw new Error('ページ資料を取得できませんでした。');
+  const identified = await identifyCapture(tab, context, format);
   if (epoch !== sourceEpoch(tab.windowId)) throw new Error('元のページが切り替わりました。');
   await chrome.storage.session.set({
     [stagedKey(tab.windowId)]: {
-      ...context, id: crypto.randomUUID(), format, tabId: tab.id, sourceUrl: tab.url,
+      ...identified, id: crypto.randomUUID(), format, tabId: tab.id, sourceUrl: tab.url,
       title: context.title || tab.title || 'ページ資料',
       expires: Date.now() + stagedMs,
     },
@@ -241,7 +265,9 @@ async function captureActiveMarkdown(windowId, tab) {
       (hasSiteGrant && !await chrome.permissions.contains({ origins: [host] }))) {
     throw new Error('読み取りの許可が取り消されました。');
   }
-  return { ok: true, text: context.text, name: 'antigravity-page-context.md' };
+  const identified = await identifyCapture(tab, context, 'markdown');
+  await assertSameSource();
+  return { ok: true, text: identified.text, name: identified.name };
 }
 
 async function openSiteGrant(windowId, host) {
@@ -266,6 +292,10 @@ export function installAttachmentMessaging() {
     if (message?.type !== 'agy-context') return false;
     handlePanelRequest(message, sender).then(respond, error => respond({ ok: false, error: error.message }));
     return true;
+  });
+  chrome.tabs.onRemoved.addListener(tabId => {
+    const key = tabReferenceKey(tabId);
+    navigator.locks.request(key, () => chrome.storage.session.remove(key)).catch(console.error);
   });
   chrome.windows.onRemoved.addListener(windowId => {
     chrome.storage.session.remove([stagedKey(windowId), 'agy-site-grant-' + windowId]).catch(console.error);

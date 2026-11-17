@@ -23,10 +23,13 @@
 
 .agy-context-extension > .agy-context-heading {
   padding-block: 3px 4px;
-  padding-inline: var(--agy-context-inset-start, 8px) var(--agy-context-inset-end, 8px);
-  font-size: 0.82em;
-  line-height: 1.25;
-  font-weight: 600;
+  padding-inline: max(var(--agy-heading-padding-inline-start, 0px), var(--agy-context-inset-start, 8px))
+    max(var(--agy-heading-padding-inline-end, 0px), var(--agy-context-inset-end, 8px));
+  color: var(--agy-heading-color, color-mix(in srgb, currentColor 72%, transparent));
+  font-size: var(--agy-heading-font-size, 0.9em);
+  line-height: var(--agy-heading-line-height, 1.25);
+  font-weight: var(--agy-heading-font-weight, 600);
+  letter-spacing: var(--agy-heading-letter-spacing, inherit);
 }
 
 .agy-context-extension > .agy-context-item {
@@ -80,8 +83,8 @@
   }
 }
 .agy-pin-controls {
+  position: relative;
   display: inline-flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -119,17 +122,63 @@
 }
 .agy-pin-toggle:focus-visible { outline: 1px solid currentColor; }
 
-.agy-brand-chip,
-.agy-pin-state:not([hidden]) {
+.agy-pin-toggle[aria-pressed="true"] {
+  color: light-dark(#244b76, #b5d0f2);
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+.agy-pin-toggle[aria-pressed="true"] svg { fill: color-mix(in srgb, currentColor 30%, transparent); }
+
+.agy-pin-tip {
+  position: absolute;
+  z-index: 100;
+  inset-block-start: 100%;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  visibility: hidden;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, CanvasText 9%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px #0002;
+  background: Canvas;
+  color: CanvasText;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.agy-pin-controls:not([data-dismissed]):is(:hover, :has(:focus-visible)) .agy-pin-tip {
+  visibility: visible;
+}
+
+.agy-action-notice {
+  box-sizing: border-box;
+  margin-block: 0 6px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, CanvasText 3%, Canvas);
+  color: CanvasText;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.agy-action-notice-error {
+  background: color-mix(in srgb, #9f7a40 7%, Canvas);
+}
+.agy-action-notice-floating {
+  position: fixed;
+  inset-block-start: 48px;
+  inset-inline: 12px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.agy-microphone-notice .agy-brand-chip {
   display: inline-block;
+  margin-inline-end: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  color: inherit;
   background: color-mix(in srgb, currentColor 10%, transparent);
   font-size: 0.6875rem;
   font-weight: 600;
-  line-height: 1.5;
-  white-space: nowrap;
 }
-
-.agy-microphone-notice .agy-brand-chip { margin-inline-end: 6px; }

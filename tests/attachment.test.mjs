@@ -33,6 +33,7 @@ test('attachment requests are scoped to the panel document, window and current s
       onRemoved: { addListener() {} },
     },
     tabs: {
+      onRemoved: { addListener() {} },
       query: async () => [active],
       create: async options => { permissionPage = options; },
       get: async () => active,
@@ -83,6 +84,12 @@ test('attachment requests are scoped to the panel document, window and current s
     ({ sourceKey } = await send({ action: 'list' }));
     const oneTouch = await take(sourceKey);
     assert.match(oneTouch.text, /\*\*Article body\*\*/);
+    const firstOrigin = oneTouch.text.match(/元タブ ID: agy-tab-([a-f0-9]{8})/)[1];
+    const firstCapture = oneTouch.text.match(/参照 ID: agy-page-([a-f0-9]{8})/)[1];
+    assert.equal(oneTouch.name, `chrome-page-${firstOrigin}-${firstCapture}.md`);
+    const sameTab = await take((await send({ action: 'list' })).sourceKey);
+    assert.match(sameTab.text, new RegExp('元タブ ID: agy-tab-' + firstOrigin));
+    assert.notEqual(sameTab.name, oneTouch.name);
     activeTabGrant = false;
     windowFocused = true;
     permissionPage = undefined;
@@ -107,6 +114,7 @@ test('attachment requests are scoped to the panel document, window and current s
     const context = await take(sourceKey);
     assert.match(context.text, /\*\*Article body\*\*/);
     assert.doesNotMatch(context.text, /private=1/);
+    assert.doesNotMatch(context.text, new RegExp('元タブ ID: agy-tab-' + firstOrigin));
     assert.equal((await take(sourceKey)).ok, false);
 
     switchDuringCapture = true;
