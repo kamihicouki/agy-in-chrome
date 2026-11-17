@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.build.outputs.version }}
+      summary: ${{ steps.build.outputs.summary }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - id: build
@@ -33,7 +34,18 @@ jobs:
           python3 scripts/package.py
           unzip -t dist/*.zip
           version=$(node -p 'require("./manifest.json").version')
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          summary=$(awk -F '|' -v version="$version" '
+            { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2) }
+            $2 == version {
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3)
+              print $3
+              exit
+            }
+          ' CHROMEWEBSTORE.md)
+          if [[ -z "$summary" ]]; then
+            summary=$(git log -1 --format=%s)
+          fi
+          printf 'version=%s\nsummary=%s\n' "$version" "$summary" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: chrome-extension
@@ -55,6 +67,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.package.outputs.version }}
+          SUMMARY: ${{ needs.package.outputs.summary }}
         run: |
           tag="v$VERSION"
           archive="dist/agy-in-chrome-$VERSION.zip"
@@ -89,8 +102,10 @@ jobs:
             echo "Tag $tag belongs to a different commit." >&2
             exit 1
           fi
+          printf -v notes '## 主な変更\n\n- %s\n' "$SUMMARY"
           gh release create "$tag" "$archive" --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --target "$GITHUB_SHA" --title "agy in chrome $VERSION" --generate-notes
+            --verify-tag --target "$GITHUB_SHA" --title "agy in chrome $VERSION" \
+            --notes "$notes" --generate-notes
   submit:
     needs: package
     if: github.ref == 'refs/heads/production' && (inputs.verify_access || vars.CWS_PUBLISH_ENABLED == 'true')
