@@ -17,4 +17,6 @@
 
 初回審査中でも、`production` でワークフローを手動実行し、既定の `verify_access` を選ぶと接続を確認できます。サービスアカウントで対象アイテムの公開版と審査版を読み取り、結果を Actions ログに記録します。この実行は ZIP のアップロードや審査申請を行いません。
 
+`production` へのマージで ZIP の検証が通ると、そのコミットに `v<version>` のタグを付け、ZIP を添付した GitHub Release を公開します。バージョンは `manifest.json` から読み取り、すでに公開済みのバージョンは再作成しません。GitHub Release はストアの審査を待たずに公開します。ストアへの提出には同じ ZIP を使用します。
+
 初回版が公開されたら、リポジトリの変数 `CWS_PUBLISH_ENABLED` を `true` にします。更新 PR では `manifest.json` のバージョンを上げ、掲載情報の履歴を更新してから `production` にマージしてください。マージによる push を受け、Actions が ZIP を検証、アップロードし、審査を申請します。Google の審査を通過すると自動で公開されます。審査中に別版をマージした場合は、審査完了後に最新の `production` で `verify_access` を外して手動実行してください。
