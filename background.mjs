@@ -1,11 +1,12 @@
-import { attachmentObservationPrefix, attachmentSetupMenu, discardStagedContext, installAttachmentMessaging, registerComposer, stageContext, stageImageMenu, stageMarkdownMenu } from './attachment.mjs';
+import { attachmentObservationPrefix, attachmentSetupMenu, discardAccountAttachments, discardStagedContext, installAttachmentMessaging, registerComposer, stageContext, stageImageMenu, stageMarkdownMenu } from './attachment.mjs';
 import { captureTabContext, downloadContextFile } from './context.mjs';
-import { dashboard, normalizeRemoteLink, remoteLinkKey } from './remote.mjs';
-import { installPinTracking } from './pins.mjs';
+import { accountPanelLock, accountRouteKey, normalizeAccountRoute, preferredRemotePanel } from './remote.mjs';
+import { discardAccountPins, installPinTracking, switchAccountContext } from './pins.mjs';
 
 installAttachmentMessaging();
 installPinTracking(discardStagedContext);
 
+const accountMenuId = 'open-antigravity-account-panel';
 const contextMenuId = 'page-context';
 const copySelectionId = 'copy-antigravity-selection';
 const copyViewportId = 'copy-antigravity-viewport';
@@ -46,8 +47,10 @@ async function savePageContext(tab) {
 }
 
 async function configureRemotePanel() {
-  const settings = await chrome.storage.local.get(remoteLinkKey);
-  await chrome.sidePanel.setOptions({ path: normalizeRemoteLink(settings[remoteLinkKey]) ?? dashboard });
+  await navigator.locks.request(accountPanelLock, async () => {
+    const path = await preferredRemotePanel(chrome);
+    if ((await chrome.sidePanel.getOptions({})).path !== path) await chrome.sidePanel.setOptions({ path });
+  });
 }
 
 chrome.action.onClicked.addListener(({ id: tabId, windowId }) => {
@@ -56,8 +59,51 @@ chrome.action.onClicked.addListener(({ id: tabId, windowId }) => {
   void configureRemotePanel().catch(console.error);
 });
 
-chrome.contextMenus.onClicked.addListener(async ({ menuItemId }, tab) => {
+async function openAccountPanel(tab, pageUrl) {
+  const path = normalizeAccountRoute(tab.url);
+  if (!path || (pageUrl && pageUrl !== path) || !tab.active ||
+      tab.pendingUrl || !Number.isInteger(tab.windowId)) return;
+
+  // Dispatch open from the menu gesture before awaiting any other Chrome API.
+  const opened = chrome.sidePanel.open({ windowId: tab.windowId });
+  try {
+    await opened;
+    await navigator.locks.request(accountPanelLock, () => switchAccountContext(async () => {
+      const current = await chrome.tabs.get(tab.id);
+      if (!current.active || current.url !== path || current.pendingUrl || current.windowId !== tab.windowId) {
+        throw new Error('切り替え元の公式タブが変わりました。');
+      }
+      const { [accountRouteKey]: previous } = await chrome.storage.session.get(accountRouteKey);
+      const { path: previousPath } = await chrome.sidePanel.getOptions({});
+      // Even the same numbered route can now refer to another Google login.
+      await discardAccountAttachments();
+      await discardAccountPins();
+      await chrome.storage.session.set({ [accountRouteKey]: path });
+      try {
+        if (previousPath === path) await chrome.sidePanel.setOptions({ path: 'panel.html' });
+        await chrome.sidePanel.setOptions({ path });
+      } catch (error) {
+        if (previous) await chrome.storage.session.set({ [accountRouteKey]: previous });
+        else await chrome.storage.session.remove(accountRouteKey);
+        if (previousPath) await chrome.sidePanel.setOptions({ path: previousPath });
+        throw error;
+      }
+    }));
+    await Promise.allSettled([
+      chrome.action.setBadgeText({ tabId: tab.id, text: '' }),
+      chrome.action.setTitle({ tabId: tab.id, title: 'agy in chrome' }),
+    ]);
+  } catch {
+    await Promise.allSettled([
+      chrome.action.setBadgeText({ tabId: tab.id, text: '!' }),
+      chrome.action.setTitle({ tabId: tab.id, title: 'アカウントを切り替えられませんでした。公式タブを開き直してお試しください。' }),
+    ]);
+  }
+}
+
+chrome.contextMenus.onClicked.addListener(async ({ menuItemId, pageUrl }, tab) => {
   if (tab?.id == null) return;
+  if (menuItemId === accountMenuId) return openAccountPanel(tab, pageUrl);
   if (menuItemId === attachmentSetupMenu) {
     await chrome.tabs.create({ windowId: tab.windowId, url: chrome.runtime.getURL('attachment-settings.html') });
     return;
@@ -103,6 +149,10 @@ async function initializeRemotePanel() {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.session.remove(['outer', 'renderer'].map(frame => attachmentObservationPrefix + frame)).catch(console.error);
   chrome.contextMenus.removeAll().then(() => {
+    chrome.contextMenus.create({
+      id: accountMenuId, title: 'このアカウントでサイドパネルを開く',
+      contexts: ['page', 'action'], documentUrlPatterns: ['https://antigravity.google.com/u/*/remote', 'https://antigravity.google.com/u/*/'],
+    });
     chrome.contextMenus.create({ id: contextMenuId, title: '接続先・資料プレビュー', contexts: ['action'] });
     chrome.contextMenus.create({ id: attachmentSetupMenu, title: 'ワンタッチ連携の設定・診断', contexts: ['action'] });
     const documentUrlPatterns = ['http://*/*', 'https://*/*'];

@@ -16,6 +16,10 @@ test('the instance start page can be pinned and learns its first conversation', 
   try {
     const view = { url, fingerprint: 'start' };
     assert.deepEqual((await panelPin(tab, view, home)).route, { url, id: null });
+    const scopedUrl = 'https://antigravity.google.com/u/3/r/example-v2';
+    const scoped = { ...view, url: scopedUrl, rendererUrl: origin + '/web/2.32.2/c/first' };
+    assert.deepEqual((await panelPin(tab, scoped, home)).route,
+      { url: scopedUrl + '?p=c%2Ffirst', id: 'first' });
     saved[key] = { url, token: 'tab-marker' };
     const current = { ...view, pinToken: 'tab-marker', rendererUrl: origin + '/web/2.32.2/c/first' };
     await panelPin(tab, current, home, { remember: true });

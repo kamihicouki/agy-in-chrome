@@ -1,5 +1,5 @@
 import { captureMarkdown } from './markdown.mjs';
-import { panelPin, rememberPanelPin, sourceEpoch, togglePin } from './pins.mjs';
+import { isSwitchingAccount, panelPin, rememberPanelPin, sourceEpoch, togglePin } from './pins.mjs';
 
 const officialOrigin = 'https://antigravity.google.com';
 const rendererOrigin = 'https://antigravity.static.usercontent.goog';
@@ -68,7 +68,15 @@ async function focusedSource({ passive = false } = {}) {
   return { windowId: win.id, tab };
 }
 
-const stagedKey = windowId => 'agy-staged-context-' + windowId;
+const stagedPrefix = 'agy-staged-context-';
+const stagedKey = windowId => stagedPrefix + windowId;
+
+export async function discardAccountAttachments() {
+  leases.clear();
+  const keys = (await chrome.storage.session.getKeys()).filter(key => key.startsWith(stagedPrefix));
+  await Promise.all(keys.map(key => navigator.locks.request('agy-stage-' + key.slice(stagedPrefix.length),
+    () => chrome.storage.session.remove(key))));
+}
 
 export async function discardStagedContext(tabId, windowId) {
   await navigator.locks.request('agy-stage-' + windowId, async () => {
@@ -109,6 +117,7 @@ async function identifyCapture(tab, context, format) {
 }
 
 export async function stageContext(tab, format) {
+  if (isSwitchingAccount()) throw new Error('アカウントを切り替えています。');
   if (!sourceHost(tab.url)) throw new Error('このページは添付できません。');
   const epoch = sourceEpoch(tab.windowId);
   const context = format === 'image' ? await captureImage(tab) : await captureMarkdown(chrome, tab);
@@ -180,6 +189,7 @@ async function recordPanelObservation(message, sender) {
 
 async function handlePanelRequest(message, sender) {
   if (message.action === 'observe') return recordPanelObservation(message, sender);
+  if (isSwitchingAccount()) throw new Error('アカウントを切り替えています。');
   if (!isPanelSender(sender)) throw new Error('公式サイドパネルで操作してください。');
   if (message.action === 'pin-toggle') return togglePin(message.view, sender);
   if (!await chrome.permissions.contains(composerPermissions)) {
@@ -193,6 +203,10 @@ async function handlePanelRequest(message, sender) {
   const stored = await getStaged(windowId);
   const staged = stored?.tabId === tab?.id && stored?.sourceUrl === tab?.url ? stored : null;
   const now = Date.now();
+
+  if (isSwitchingAccount() || epoch !== sourceEpoch(windowId)) {
+    throw new Error('表示が切り替わりました。Add Context を開き直してください。');
+  }
 
   if (message.action === 'list') {
     for (const [key, lease] of leases) {

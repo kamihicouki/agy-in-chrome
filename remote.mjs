@@ -1,6 +1,22 @@
 export const dashboard = 'https://antigravity.google.com/';
+export const accountRouteKey = 'agy-account-panel-route';
+export const accountPanelLock = 'agy-account-panel';
 export const remoteLinkKey = 'remoteControlLink';
 const viewKey = 'remoteControlView';
+
+export function normalizeAccountRoute(value) {
+  return typeof value === 'string' && value.startsWith(dashboard) &&
+    /^u\/(?:0|[1-9][0-9]{0,8})\/(?:remote)?$/.test(value.slice(dashboard.length)) &&
+    !/\s/.test(value) ? value : null;
+}
+
+export async function preferredRemotePanel(chrome) {
+  const session = await chrome.storage.session.get(accountRouteKey);
+  const account = normalizeAccountRoute(session[accountRouteKey]);
+  if (account) return account;
+  const saved = await chrome.storage.local.get(remoteLinkKey);
+  return normalizeRemoteLink(saved[remoteLinkKey]) ?? dashboard;
+}
 
 export function normalizeRemoteLink(value) {
   if (typeof value !== 'string' || value.length > 2048) return null;
@@ -16,7 +32,7 @@ export function instanceLink(value) {
   let route;
   try { route = new URL(value); } catch { return null; }
   if (route.origin !== new URL(dashboard).origin || route.username || route.password ||
-    !/^\/r\/[\w-]+\/?$/.test(route.pathname) || route.searchParams.getAll('p').length > 1) return null;
+    !/^\/(?:u\/(?:0|[1-9][0-9]{0,8})\/)?r\/[\w-]+\/?$/.test(route.pathname) || route.searchParams.getAll('p').length > 1) return null;
   return new URL(route.pathname.replace(/\/$/, ''), dashboard).href;
 }
 
