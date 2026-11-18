@@ -17,7 +17,7 @@ async function waitFor(read, name, attempts = 40) {
   throw new Error('Timed out waiting for ' + name);
 }
 
-test('Add context in a native cross-origin side panel inserts the active tab context', async () => {
+test('the native side panel scopes Add Context and pins to tabs and clears them on account handoff', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agy-native-panel-'));
   const extender = join(directory, 'extension');
   const server = createServer((request, response) => {
@@ -28,6 +28,8 @@ test('Add context in a native cross-origin side panel inserts the active tab con
       response.end(`<style>body{margin:0}iframe{display:block;border:0;width:100%;height:350px}</style>
         <iframe src="${innerOrigin}/web/fixture/c/${id}"></iframe>
         <script>addEventListener('message',e=>{if(e.data?.draft)document.body.dataset.draft=e.data.draft;});</script>`);
+    } else if (request.url === '/u/0/' || request.url === '/u/3/remote') {
+      response.end('<button id="account-handoff">Open this account in the side panel</button>');
     } else if (/^\/web\/fixture\/c\/[XY]$/.test(request.url)) {
       response.end(`<style>body{margin:0}textarea{display:block;width:96%;height:80px}</style>
         <header><button aria-label="Search Conversations">Search</button></header>
@@ -60,16 +62,31 @@ test('Add context in a native cross-origin side panel inserts the active tab con
     manifest.permissions.push('tabs');
     delete manifest.optional_permissions;
     manifest.host_permissions = ['http://127.0.0.1/*', 'http://localhost/*'];
+    manifest.content_scripts = [{
+      matches: ['http://127.0.0.1/*'], js: ['account-test.js'],
+    }];
     await writeFile(manifestPath, JSON.stringify(manifest));
     for (const name of ['attachment.mjs', 'composer.js', 'remote.mjs']) {
       const path = join(extender, name);
       const source = await readFile(path, 'utf8');
-      await writeFile(path, source.replace('https://antigravity.google.com/', panelUrl)
+      const dashboard = name === 'remote.mjs' ? outerOrigin + '/' : panelUrl;
+      await writeFile(path, source.replace('https://antigravity.google.com/', dashboard)
         .replace('https://antigravity.google.com', outerOrigin)
         .replace('https://antigravity.static.usercontent.goog', innerOrigin)
         .replace("officialOrigin + '/*'", "'http://127.0.0.1/*'")
         .replace("rendererOrigin + '/*'", "'http://localhost/*'"));
     }
+    const backgroundPath = join(extender, 'background.mjs');
+    await writeFile(backgroundPath, (await readFile(backgroundPath, 'utf8')) + `
+      chrome.runtime.onMessage.addListener((message, sender) => {
+        if (message === 'account-handoff-test') void openAccountPanel(sender.tab, sender.url);
+      });
+    `);
+    await writeFile(join(extender, 'account-test.js'), `
+      document.querySelector('#account-handoff')?.addEventListener('click', event => {
+        if (event.isTrusted) void chrome.runtime.sendMessage('account-handoff-test');
+      });
+    `);
     await writeFile(join(extender, 'driver.html'), '<button>Open panel</button><script src="driver.js"></script>');
     await writeFile(join(extender, 'driver.js'), `document.querySelector('button').onclick = async () =>
       chrome.sidePanel.open({windowId:(await chrome.windows.getCurrent()).id});`);
@@ -81,6 +98,8 @@ test('Add context in a native cross-origin side panel inserts the active tab con
     const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker', { timeout: 10_000 });
     const driver = await browser.newPage();
     await driver.goto('chrome-extension://' + new URL(worker.url()).host + '/driver.html');
+    await driver.waitForFunction(async url => (await chrome.sidePanel.getOptions({})).path === url, outerOrigin + '/');
+    await driver.evaluate(async url => chrome.sidePanel.setOptions({ path: url }), panelUrl);
     await driver.waitForFunction(async url => (await chrome.sidePanel.getOptions({})).path === url, panelUrl);
     await driver.getByRole('button', { name: 'Open panel' }).click();
 
@@ -189,6 +208,29 @@ test('Add context in a native cross-origin side panel inserts the active tab con
       }));
       return Number.isInteger(current) && values.length === 1 && values[0].url.endsWith('X');
     }, 'B unpinned');
+
+    const requestAccountSwitch = async (page, path) => {
+      const url = outerOrigin + path;
+      await page.goto(url);
+      await page.bringToFront();
+      await page.getByRole('button', { name: 'Open this account in the side panel' }).click();
+      await waitFor(async () => (await worker.evaluate(async () => (await chrome.sidePanel.getOptions({})).path)) === url,
+        'account panel path ' + path);
+      await waitFor(async () => (await targets()).filter(target => target.type === 'page' && target.url === url).length >= 2,
+        'account is also visible in the native panel');
+    };
+    const accountTab = await browser.newPage();
+    await worker.evaluate(async () => {
+      await chrome.storage.session.set({ 'agy-staged-context-999': { text: 'prepared in the previous account' } });
+    });
+    await requestAccountSwitch(accountTab, '/u/3/remote');
+    assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.session.getKeys())
+      .filter(key => /^agy-(conversation-pin|staged-context)-/.test(key))), []);
+    await source.bringToFront();
+    assert.ok(await worker.evaluate(async () => !(await chrome.sidePanel.getOptions({
+      tabId: (await chrome.tabs.query({ active: true }))[0].id,
+    })).enabled));
+    await requestAccountSwitch(accountTab, '/u/0/');
   } finally {
     await browser?.close();
     await Promise.all([server, sourceServer].map(activeServer => new Promise(resolve => activeServer.close(resolve))));
