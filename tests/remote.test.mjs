@@ -19,7 +19,8 @@ test('Remote Control accepts only the documented device and conversation links',
 
 test('account handoff accepts only exact HTTPS Antigravity account dashboard routes', () => {
   assert.equal(normalizeAccountRoute(dashboard + 'u/3/remote'), dashboard + 'u/3/remote');
-  for (const path of ['u/3/', 'u/3/r/id', 'u/3/remote?redirect=https://example.org',
+  assert.equal(normalizeAccountRoute(dashboard + 'u/0/'), dashboard + 'u/0/');
+  for (const path of ['u/3', 'u/3/r/id', 'u/3/remote?redirect=https://example.org',
     'u/3/remote#draft', 'u/-1/remote', 'u/03/remote', 'u/3/../3/remote']) {
     assert.equal(normalizeAccountRoute(dashboard + path), null, path);
   }

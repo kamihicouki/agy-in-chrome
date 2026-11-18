@@ -151,7 +151,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll().then(() => {
     chrome.contextMenus.create({
       id: accountMenuId, title: 'このアカウントでサイドパネルを開く',
-      contexts: ['page', 'action'], documentUrlPatterns: ['https://antigravity.google.com/u/*/remote'],
+      contexts: ['page', 'action'], documentUrlPatterns: ['https://antigravity.google.com/u/*/remote', 'https://antigravity.google.com/u/*/'],
     });
     chrome.contextMenus.create({ id: contextMenuId, title: '接続先・資料プレビュー', contexts: ['action'] });
     chrome.contextMenus.create({ id: attachmentSetupMenu, title: 'ワンタッチ連携の設定・診断', contexts: ['action'] });

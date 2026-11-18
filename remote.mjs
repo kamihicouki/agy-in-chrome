@@ -6,7 +6,7 @@ const viewKey = 'remoteControlView';
 
 export function normalizeAccountRoute(value) {
   return typeof value === 'string' && value.startsWith(dashboard) &&
-    /^u\/(?:0|[1-9][0-9]{0,8})\/remote$/.test(value.slice(dashboard.length)) &&
+    /^u\/(?:0|[1-9][0-9]{0,8})\/(?:remote)?$/.test(value.slice(dashboard.length)) &&
     !/\s/.test(value) ? value : null;
 }
 
@@ -32,7 +32,7 @@ export function instanceLink(value) {
   let route;
   try { route = new URL(value); } catch { return null; }
   if (route.origin !== new URL(dashboard).origin || route.username || route.password ||
-    !/^\/r\/[\w-]+\/?$/.test(route.pathname) || route.searchParams.getAll('p').length > 1) return null;
+    !/^\/(?:u\/(?:0|[1-9][0-9]{0,8})\/)?r\/[\w-]+\/?$/.test(route.pathname) || route.searchParams.getAll('p').length > 1) return null;
   return new URL(route.pathname.replace(/\/$/, ''), dashboard).href;
 }
 

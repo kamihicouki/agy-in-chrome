@@ -16,7 +16,7 @@ test('the account menu switches the global panel only from the active official a
   sidePanel.onClosed = action.onClicked = event;
   action.setBadgeText = action.setTitle = async () => {};
 
-  const routeA = dashboard + 'u/0/remote';
+  const routeA = dashboard + 'u/0/';
   const routeB = dashboard + 'u/3/remote';
   let active = { id: 3, windowId: 4, url: routeB, active: true };
   let path = routeA;
