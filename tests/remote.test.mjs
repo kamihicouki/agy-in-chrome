@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { asPrompt, captureTabContext } from '../context.mjs';
-import { dashboard, normalizeRemoteLink, openRemote } from '../remote.mjs';
+import { dashboard, normalizeAccountRoute, normalizeRemoteLink, openRemote, preferredRemotePanel, accountRouteKey } from '../remote.mjs';
 
 test('Remote Control accepts only the documented device and conversation links', () => {
   const base = dashboard + 'r/example-id-v2';
@@ -15,6 +15,27 @@ test('Remote Control accepts only the documented device and conversation links',
     dashboard, base + '#private', base + '?p=c%2Fa&p=c%2Fb', base + '?redirect=https://evil.test',
     dashboard + 'r/..', base + '?p=c%2F..', base + '?p=c%252Fid',
   ]) assert.equal(normalizeRemoteLink(invalid), null, invalid);
+});
+
+test('account handoff accepts only exact HTTPS Antigravity account dashboard routes', () => {
+  assert.equal(normalizeAccountRoute(dashboard + 'u/3/remote'), dashboard + 'u/3/remote');
+  for (const path of ['u/3/', 'u/3/r/id', 'u/3/remote?redirect=https://example.org',
+    'u/3/remote#draft', 'u/-1/remote', 'u/03/remote', 'u/3/../3/remote']) {
+    assert.equal(normalizeAccountRoute(dashboard + path), null, path);
+  }
+  assert.equal(normalizeAccountRoute('https://antigravity.google.com.example.org/u/3/remote'), null);
+  assert.equal(normalizeAccountRoute('https://login@antigravity.google.com/u/3/remote'), null);
+});
+
+test('the explicit account route takes precedence until the browser session ends', async () => {
+  let session = { [accountRouteKey]: dashboard + 'u/3/remote' };
+  const chrome = { storage: {
+    session: { get: async () => session },
+    local: { get: async () => ({ remoteControlLink: dashboard + 'r/previous' }) },
+  } };
+  assert.equal(await preferredRemotePanel(chrome), dashboard + 'u/3/remote');
+  session = {};
+  assert.equal(await preferredRemotePanel(chrome), dashboard + 'r/previous');
 });
 
 test('a rejected split opens a normal tab without invoking the local bridge', async () => {

@@ -1,5 +1,5 @@
 import { captureTabContext } from './context.mjs';
-import { dashboard, normalizeRemoteLink, openRemote, remoteLinkKey } from './remote.mjs';
+import { dashboard, normalizeRemoteLink, openRemote, remoteLinkKey, preferredRemotePanel, accountPanelLock } from './remote.mjs';
 
 const byId = id => document.getElementById(id);
 const sourceWindow = chrome.windows.getCurrent().then(window => window.id);
@@ -79,7 +79,11 @@ async function launchRemote(mode, chooseAgain = false) {
     await remoteReady;
     const url = chooseAgain ? dashboard : savedRemote ?? dashboard;
     if (mode === 'panel') {
-      await chrome.sidePanel.setOptions({ path: url });
+      await navigator.locks.request(accountPanelLock, async () => {
+        const preferred = await preferredRemotePanel(chrome);
+        const path = chooseAgain && preferred === savedRemote ? dashboard : preferred;
+        await chrome.sidePanel.setOptions({ path });
+      });
       return;
     }
     const windowId = await sourceWindow;

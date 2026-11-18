@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { installAttachmentMessaging, stageContext } from '../attachment.mjs';
+import { discardAccountAttachments, installAttachmentMessaging, stageContext } from '../attachment.mjs';
+import { switchAccountContext } from '../pins.mjs';
 
 test('attachment requests are scoped to the panel document, window and current source', async () => {
   let listener;
@@ -44,6 +45,7 @@ test('attachment requests are scoped to the panel document, window and current s
       },
     },
     storage: { session: {
+      getKeys: async () => Object.keys(saved),
       get: async key => ({ [key]: saved[key] }),
       set: async data => Object.assign(saved, data),
       remove: async key => { delete saved[key]; },
@@ -116,6 +118,17 @@ test('attachment requests are scoped to the panel document, window and current s
     assert.doesNotMatch(context.text, /private=1/);
     assert.doesNotMatch(context.text, new RegExp('元タブ ID: agy-tab-' + firstOrigin));
     assert.equal((await take(sourceKey)).ok, false);
+
+    await stageContext(active, 'markdown');
+    const old = await send({ action: 'list' });
+    assert.equal(old.staged, true);
+    assert.equal((await take(old.sourceKey, 'staged')).ok, true);
+    await switchAccountContext(async () => {
+      assert.equal((await send({ action: 'list' })).ok, false);
+      await discardAccountAttachments();
+    });
+    assert.equal((await send({ action: 'verify', sourceKey: old.sourceKey })).ok, false);
+    assert.equal((await send({ action: 'list' })).staged, false);
 
     switchDuringCapture = true;
     await assert.rejects(stageContext(active, 'image'), /タブが切り替わりました/);

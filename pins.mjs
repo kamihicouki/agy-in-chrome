@@ -10,6 +10,38 @@ let focusEpoch = 0;
 let focusedWindow;
 
 export const sourceEpoch = windowId => focusEpoch + '/' + (sourceEpochs.get(windowId) ?? 0);
+let switchingAccount = false;
+export const isSwitchingAccount = () => switchingAccount;
+
+export async function switchAccountContext(change) {
+  if (switchingAccount || changing.size) {
+    throw new Error('会話の切り替えが終わってから、もう一度操作してください。');
+  }
+  switchingAccount = true;
+  focusEpoch++;
+  preparedToggles.clear();
+  rendererRoutes.clear();
+  try {
+    await change();
+  } finally {
+    switchingAccount = false;
+  }
+}
+
+export async function discardAccountPins() {
+  const prefix = pinKey('');
+  const keys = (await chrome.storage.session.getKeys()).filter(key => key.startsWith(prefix));
+  for (const key of keys) {
+    const tabId = Number(key.slice(prefix.length));
+    if (!Number.isInteger(tabId) || tabId < 0) continue;
+    await navigator.locks.request(key, async () => {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (tab) await chrome.sidePanel.setOptions({ tabId, enabled: false });
+      await chrome.storage.session.remove(key);
+    });
+  }
+}
+
 const advance = windowId => sourceEpochs.set(windowId, (sourceEpochs.get(windowId) ?? 0) + 1);
 const readPin = async tabId => {
   const key = pinKey(tabId);
@@ -23,7 +55,7 @@ function pinnedPath(url, token) {
 }
 
 export async function panelPin(tab, view, sender, { remember = false, recover = false } = {}) {
-  if (changing.has(tab?.id)) throw new Error('このタブの会話に切り替えています。');
+  if (switchingAccount || changing.has(tab?.id)) throw new Error('このタブの会話に切り替えています。');
   const pin = Number.isInteger(tab?.id) ? await readPin(tab.id) : null;
   const recovering = recover && pin && !view?.pinToken && instanceLink(pin.url) === instanceLink(view?.url);
   if (!recovering && (view?.pinToken ?? null) !== (pin?.token ?? null)) {
@@ -59,7 +91,7 @@ export async function panelPin(tab, view, sender, { remember = false, recover = 
     rendererRoutes.set(identifier, view.url);
     if (rendererRoutes.size > 128) rendererRoutes.delete(rendererRoutes.keys().next().value);
   }
-  if (changing.has(tab?.id)) throw new Error('このタブの会話に切り替えています。');
+  if (switchingAccount || changing.has(tab?.id)) throw new Error('このタブの会話に切り替えています。');
   if (pin && remember && !recovering && route.id && route.url !== pin.url) {
     await chrome.storage.session.set({ [pinKey(tab.id)]: { ...pin, url: route.url } });
   }
@@ -74,7 +106,7 @@ export async function togglePin(view, sender) {
     prepared.viewUrl !== view?.url || prepared.rendererUrl !== view?.rendererUrl ||
     prepared.fingerprint !== view?.fingerprint ||
     prepared.viewPinToken !== view?.pinToken ||
-    prepared.epoch !== sourceEpoch(prepared.tab.windowId) || changing.has(prepared.tab.id)) {
+    prepared.epoch !== sourceEpoch(prepared.tab.windowId) || switchingAccount || changing.has(prepared.tab.id)) {
     throw new Error('Chrome タブまたは会話が切り替わりました。表示を確認してから押し直してください。');
   }
 
@@ -149,10 +181,10 @@ export function installPinTracking(discardStagedContext) {
   });
   chrome.windows.onRemoved.addListener(windowId => sourceEpochs.delete(windowId));
   chrome.sidePanel.onClosed.addListener(({ tabId, path }) => {
-    if (!Number.isInteger(tabId)) return;
+    if (switchingAccount || !Number.isInteger(tabId)) return;
     navigator.locks.request(pinKey(tabId), async () => {
       const pin = await readPin(tabId);
-      if (pin && path !== pinnedPath(pin.url, pin.token)) {
+      if (!switchingAccount && pin && path !== pinnedPath(pin.url, pin.token)) {
         await chrome.sidePanel.setOptions({ tabId, path: pinnedPath(pin.url, pin.token) });
       }
     }).catch(console.error);
