@@ -249,6 +249,7 @@ test('Readability and Turndown extract Markdown without hidden or editable mater
   const browser = await chromium.launch({ channel: 'chromium' });
   try {
     const page = await browser.newPage();
+    await page.route('https://example.com/**', route => route.abort());
     await page.setContent(`<title>Public example</title><article>
       <h1>Article heading</h1><p>${'Public article material with enough words for extraction. '.repeat(12)}</p>
       <p><img src="https://example.com/diagram.png?token=secret" alt="Article diagram"><strong>Formatting retained</strong> <a href="https://example.com/page?secret=hidden#token">Example link</a></p>
